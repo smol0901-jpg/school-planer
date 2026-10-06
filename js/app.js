@@ -12,6 +12,8 @@
     clubs: [],        // { id, day (0-6), name, start, end, place, teacher, items: [], notes }
     buses: [],        // { id, number, time, destination, walkMin, notes }
     notes: [],        // { id, title, body, created, updated, audio?, audioMime? }
+    people: [],       // { id, name, relation, birthday (MM-DD or YYYY-MM-DD), age?, likes, dislikes, notes }
+    holidays: [],     // { id, name, start (YYYY-MM-DD), end (YYYY-MM-DD), homework, notes }
     packChecks: {},   // { "itemKey": true }
     settings: { theme: 'light', activeDay: null }
   };
@@ -47,6 +49,8 @@
         if (!Array.isArray(state.notes)) state.notes = [];
         if (!Array.isArray(state.lessons)) state.lessons = [];
         if (!Array.isArray(state.buses)) state.buses = [];
+        if (!Array.isArray(state.people)) state.people = [];
+        if (!Array.isArray(state.holidays)) state.holidays = [];
       }
     } catch (e) {
       console.warn('Load error', e);
@@ -167,93 +171,279 @@
     const lessons = state.lessons
       .filter(l => l.day === day)
       .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+    const clubsToday = state.clubs
+      .filter(c => c.day === day)
+      .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 
-    const list = document.getElementById('today-lessons');
-    const empty = document.getElementById('today-empty');
+    const allToday = [
+      ...lessons.map(l => ({ ...l, _type: 'lesson', _title: l.subject, _place: l.room || '' })),
+      ...clubsToday.map(c => ({ ...c, _type: 'club', _title: c.name, _place: c.place || '' }))
+    ].sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 
-    // Find current / next lesson
-    let statusHtml = '';
-    if (lessons.length) {
-      let current = null;
-      let next = null;
-      for (const l of lessons) {
-        const start = parseTime(l.start);
-        const end = parseTime(l.end) || (start !== null ? start + 45 : null);
-        if (start === null) continue;
-        if (nowMin >= start && (end === null || nowMin < end)) {
-          current = l;
-          break;
+    // Buses: guess direction by destination keywords
+    const morningBuses = state.buses.filter(b => {
+      const t = parseTime(b.time);
+      if (t === null) return false;
+      const dest = (b.destination || '').toLowerCase();
+      const looksHome = /дом|домой|home/.test(dest);
+      return t < 12 * 60 && !looksHome;
+    }).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    const eveningBuses = state.buses.filter(b => {
+      const t = parseTime(b.time);
+      if (t === null) return false;
+      const dest = (b.destination || '').toLowerCase();
+      const looksSchool = /школ|school|лицей|гимназ/.test(dest);
+      return t >= 12 * 60 || /дом|домой|home/.test(dest);
+    }).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+    const firstEvent = allToday[0] || null;
+    const lastEvent = allToday.length ? allToday[allToday.length - 1] : null;
+
+    // Best morning bus: arrives (bus time + small buffer) before first lesson, maximize spare
+    let bestMorningBus = null;
+    if (firstEvent) {
+      const firstStart = parseTime(firstEvent.start);
+      if (firstStart !== null) {
+        let best = null;
+        for (const b of morningBuses.length ? morningBuses : state.buses) {
+          const bt = parseTime(b.time);
+          if (bt === null) continue;
+          const walk = Number(b.walkMin) || 0;
+          // leave home at bus_time - walk; arrive school ~ bus_time + 5
+          const arriveApprox = bt + 5;
+          if (arriveApprox <= firstStart - 5) {
+            const spare = firstStart - arriveApprox;
+            if (!best || spare < best.spare) best = { bus: b, spare, leaveAt: bt - walk };
+          }
         }
-        if (nowMin < start && !next) {
-          next = l;
+        // fallback: earliest bus of the day
+        if (!best && state.buses.length) {
+          const sorted = [...state.buses].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+          const b = sorted[0];
+          const bt = parseTime(b.time);
+          const walk = Number(b.walkMin) || 0;
+          if (bt !== null) best = { bus: b, spare: null, leaveAt: bt - walk };
         }
-      }
-      if (current) {
-        const endMin = parseTime(current.end);
-        const left = endMin !== null ? endMin - nowMin : null;
-        statusHtml = `<div class="today-status current">Сейчас: <strong>${escapeHtml(current.subject)}</strong>${left !== null ? ` · ещё ${left} мин` : ''}${current.room ? ' · каб. ' + escapeHtml(current.room) : ''}</div>`;
-      } else if (next) {
-        const until = parseTime(next.start) - nowMin;
-        statusHtml = `<div class="today-status next">Следующий: <strong>${escapeHtml(next.subject)}</strong> через ${until} мин (${formatTime(next.start)})${next.room ? ' · каб. ' + escapeHtml(next.room) : ''}</div>`;
-      } else if (lessons.length) {
-        statusHtml = `<div class="today-status done">Уроки на сегодня закончились</div>`;
+        bestMorningBus = best;
       }
     }
 
-    if (!lessons.length) {
+    // Best evening bus after last event
+    let bestEveningBus = null;
+    if (lastEvent) {
+      const lastEnd = parseTime(lastEvent.end) || (parseTime(lastEvent.start) !== null ? parseTime(lastEvent.start) + 45 : null);
+      if (lastEnd !== null) {
+        const candidates = (eveningBuses.length ? eveningBuses : state.buses)
+          .map(b => ({ b, t: parseTime(b.time) }))
+          .filter(x => x.t !== null && x.t >= lastEnd - 5)
+          .sort((a, b) => a.t - b.t);
+        if (candidates.length) {
+          const c = candidates[0];
+          const walk = Number(c.b.walkMin) || 0;
+          bestEveningBus = { bus: c.b, leaveSchoolAt: c.t - walk, busTime: c.t };
+        }
+      }
+    }
+
+    // ---- HERO: what to do right now ----
+    let heroHtml = '';
+    let current = null, next = null;
+    for (const item of allToday) {
+      const start = parseTime(item.start);
+      const end = parseTime(item.end) || (start !== null ? start + 45 : null);
+      if (start === null) continue;
+      if (nowMin >= start && (end === null || nowMin < end)) { current = item; break; }
+      if (nowMin < start && !next) next = item;
+    }
+
+    // Morning leave guidance (before first event)
+    if (!current && firstEvent && bestMorningBus && nowMin < parseTime(firstEvent.start)) {
+      const leaveAt = bestMorningBus.leaveAt;
+      const bus = bestMorningBus.bus;
+      const untilLeave = leaveAt - nowMin;
+      if (untilLeave > 0 && untilLeave <= 90) {
+        heroHtml = `
+          <div class="hero-card urgent">
+            <div class="hero-label">Пора собираться</div>
+            <div class="hero-title">Выходи из дома через ${untilLeave} мин</div>
+            <div class="hero-meta">Автобус № ${escapeHtml(bus.number)} в ${formatTime(bus.time)}${bus.destination ? ' → ' + escapeHtml(bus.destination) : ''}</div>
+            <div class="hero-meta">До остановки ~${Number(bus.walkMin) || 0} мин · первый урок ${formatTime(firstEvent.start)} (${escapeHtml(firstEvent._title)})</div>
+          </div>`;
+      } else if (untilLeave <= 0 && nowMin < parseTime(bus.time) + 5) {
+        heroHtml = `
+          <div class="hero-card urgent">
+            <div class="hero-label">Срочно</div>
+            <div class="hero-title">Выходи сейчас на автобус № ${escapeHtml(bus.number)}</div>
+            <div class="hero-meta">Отправление ${formatTime(bus.time)} · до остановки ~${Number(bus.walkMin) || 0} мин</div>
+          </div>`;
+      } else if (untilLeave > 90) {
+        heroHtml = `
+          <div class="hero-card">
+            <div class="hero-label">Утром</div>
+            <div class="hero-title">Выйти из дома в ${formatMinutes(Math.max(0, leaveAt))}</div>
+            <div class="hero-meta">Автобус № ${escapeHtml(bus.number)} в ${formatTime(bus.time)} → к ${formatTime(firstEvent.start)} на ${escapeHtml(firstEvent._title)}</div>
+          </div>`;
+      }
+    }
+
+    if (!heroHtml && current) {
+      const endMin = parseTime(current.end) || (parseTime(current.start) + 45);
+      const left = endMin - nowMin;
+      const place = current._place;
+      heroHtml = `
+        <div class="hero-card current">
+          <div class="hero-label">Сейчас</div>
+          <div class="hero-title">${current._type === 'club' ? '🎯 ' : ''}${escapeHtml(current._title)}</div>
+          <div class="hero-meta">${place ? 'Иди в: <strong>' + escapeHtml(place) + '</strong> · ' : ''}ещё ${left > 0 ? left : 0} мин${current.teacher ? ' · ' + escapeHtml(current.teacher) : ''}</div>
+          ${current.items && current.items.length ? `<div class="hero-items">Возьми: ${current.items.map(i => escapeHtml(i)).join(', ')}</div>` : ''}
+        </div>`;
+    } else if (!heroHtml && next) {
+      const until = parseTime(next.start) - nowMin;
+      const place = next._place;
+      // transition hint
+      let transition = '';
+      if (current === null && allToday.length) {
+        // find previous finished
+        const prev = [...allToday].reverse().find(it => {
+          const e = parseTime(it.end) || (parseTime(it.start) + 45);
+          return e !== null && e <= nowMin;
+        });
+        if (prev && prev._place && place && prev._place !== place) {
+          transition = `Переход: ${escapeHtml(prev._place)} → ${escapeHtml(place)}`;
+        }
+      }
+      heroHtml = `
+        <div class="hero-card next">
+          <div class="hero-label">Дальше через ${until} мин</div>
+          <div class="hero-title">${next._type === 'club' ? '🎯 ' : ''}${escapeHtml(next._title)}</div>
+          <div class="hero-meta">${formatTime(next.start)}${next.end ? '–' + formatTime(next.end) : ''}${place ? ' · <strong>' + escapeHtml(place) + '</strong>' : ''}</div>
+          ${transition ? `<div class="hero-meta">${transition}</div>` : ''}
+          ${next.items && next.items.length ? `<div class="hero-items">Возьми: ${next.items.map(i => escapeHtml(i)).join(', ')}</div>` : ''}
+        </div>`;
+    } else if (!heroHtml && bestEveningBus && lastEvent) {
+      const lastEnd = parseTime(lastEvent.end) || (parseTime(lastEvent.start) + 45);
+      if (nowMin >= lastEnd - 15) {
+        const untilBus = bestEveningBus.busTime - nowMin;
+        const leaveIn = bestEveningBus.leaveSchoolAt - nowMin;
+        if (leaveIn <= 0) {
+          heroHtml = `
+            <div class="hero-card urgent">
+              <div class="hero-label">Домой</div>
+              <div class="hero-title">Выходи на автобус № ${escapeHtml(bestEveningBus.bus.number)}</div>
+              <div class="hero-meta">Отправление ${formatTime(bestEveningBus.bus.time)}${bestEveningBus.bus.destination ? ' → ' + escapeHtml(bestEveningBus.bus.destination) : ''}</div>
+            </div>`;
+        } else if (untilBus > 0) {
+          heroHtml = `
+            <div class="hero-card next">
+              <div class="hero-label">После занятий</div>
+              <div class="hero-title">К автобусу через ${leaveIn} мин</div>
+              <div class="hero-meta">№ ${escapeHtml(bestEveningBus.bus.number)} в ${formatTime(bestEveningBus.bus.time)} · идти ~${Number(bestEveningBus.bus.walkMin) || 0} мин</div>
+            </div>`;
+        }
+      }
+    }
+
+    if (!heroHtml) {
+      if (!allToday.length && !state.buses.length) {
+        heroHtml = `<div class="hero-card muted"><div class="hero-label">Пока пусто</div><div class="hero-title">Добавь уроки и автобус</div><div class="hero-meta">Тогда здесь появится: когда выходить и куда идти</div></div>`;
+      } else if (!allToday.length) {
+        heroHtml = `<div class="hero-card muted"><div class="hero-label">Сегодня</div><div class="hero-title">Уроков и кружков нет</div></div>`;
+      } else {
+        heroHtml = `<div class="hero-card muted"><div class="hero-label">Готово</div><div class="hero-title">На сегодня всё закончилось</div></div>`;
+      }
+    }
+    document.getElementById('dash-hero').innerHTML = heroHtml;
+
+    // ---- Secondary status chips ----
+    let statusHtml = '';
+    const freeSlots = computeFreeSlots(day, 8 * 60, 18 * 60);
+    if (freeSlots.length) {
+      const freeText = freeSlots.slice(0, 3).map(s => `${formatMinutes(s.start)}–${formatMinutes(s.end)}`).join(', ');
+      statusHtml += `<div class="today-status free-slots">Окна: <strong>${freeText}</strong></div>`;
+    }
+    if (bestMorningBus && firstEvent && nowMin < parseTime(firstEvent.start)) {
+      statusHtml += `<div class="today-status">Утром: выйти ~<strong>${formatMinutes(Math.max(0, bestMorningBus.leaveAt))}</strong> → авт. ${escapeHtml(bestMorningBus.bus.number)}</div>`;
+    }
+    if (bestEveningBus) {
+      statusHtml += `<div class="today-status">Домой: авт. <strong>${escapeHtml(bestEveningBus.bus.number)}</strong> в ${formatTime(bestEveningBus.bus.time)} (выйти с уроков ~${formatMinutes(bestEveningBus.leaveSchoolAt)})</div>`;
+    }
+    // Birthdays soon
+    const bdays = getUpcomingBirthdays(14);
+    if (bdays.length) {
+      statusHtml += bdays.slice(0, 3).map(b => {
+        const when = b.days === 0 ? 'сегодня' : b.days === 1 ? 'завтра' : `через ${b.days} дн.`;
+        return `<div class="today-status bday">🎂 <strong>${escapeHtml(b.person.name)}</strong> — ДР ${when}${b.person.likes ? ' · любит: ' + escapeHtml(b.person.likes) : ''}</div>`;
+      }).join('');
+    }
+
+    // Holidays
+    const activeH = getActiveHoliday();
+    const nextH = getNextHoliday();
+    if (activeH) {
+      const endL = activeH.end ? new Date(activeH.end + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '';
+      statusHtml += `<div class="today-status free-slots">🏖️ Сейчас <strong>${escapeHtml(activeH.name)}</strong>${endL ? ' до ' + endL : ''}${activeH.homework ? ' · есть задания' : ''}</div>`;
+      if (activeH.homework) {
+        statusHtml += `<div class="today-status">📝 Задания: ${escapeHtml(activeH.homework.slice(0, 120))}${activeH.homework.length > 120 ? '…' : ''}</div>`;
+      }
+    } else if (nextH) {
+      const startL = nextH.start ? new Date(nextH.start + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '';
+      statusHtml += `<div class="today-status">🏖️ Ближайшие каникулы: <strong>${escapeHtml(nextH.name)}</strong> с ${startL}</div>`;
+    }
+
+    document.getElementById('dash-status').innerHTML = statusHtml;
+
+    // ---- Day timeline ----
+    renderDayTimeline(day, allToday, bestMorningBus, bestEveningBus, nowMin);
+
+    // ---- Week grid ----
+    renderWeekGrid();
+
+    // ---- Today's detailed list ----
+    const list = document.getElementById('today-lessons');
+    const empty = document.getElementById('today-empty');
+
+    if (!allToday.length) {
       list.innerHTML = '';
       empty.classList.remove('hidden');
     } else {
       empty.classList.add('hidden');
-      list.innerHTML = statusHtml + lessons.map(l => {
-        const start = parseTime(l.start);
-        const end = parseTime(l.end) || (start !== null ? start + 45 : null);
-        let cls = '';
+      list.innerHTML = allToday.map((item, idx) => {
+        const start = parseTime(item.start);
+        const end = parseTime(item.end) || (start !== null ? start + 45 : null);
+        let cls = item._type === 'club' ? ' club-card' : '';
         if (start !== null) {
-          if (nowMin >= start && (end === null || nowMin < end)) cls = ' lesson-current';
-          else if (end !== null && nowMin >= end) cls = ' lesson-past';
+          if (nowMin >= start && (end === null || nowMin < end)) cls += ' lesson-current';
+          else if (end !== null && nowMin >= end) cls += ' lesson-past';
+        }
+        // gap to next
+        let gapHtml = '';
+        if (idx < allToday.length - 1) {
+          const nextStart = parseTime(allToday[idx + 1].start);
+          if (end !== null && nextStart !== null && nextStart - end >= 15) {
+            gapHtml = `<div class="gap-hint">Свободно ${nextStart - end} мин до следующего</div>`;
+          } else if (end !== null && nextStart !== null && item._place && allToday[idx + 1]._place && item._place !== allToday[idx + 1]._place) {
+            gapHtml = `<div class="gap-hint">Потом переход в ${escapeHtml(allToday[idx + 1]._place)}</div>`;
+          }
         }
         return `
         <div class="card${cls}">
           <div class="card-header">
             <div>
-              <div class="card-title">${escapeHtml(l.subject)}</div>
+              <div class="card-title">${item._type === 'club' ? '🎯 ' : ''}${escapeHtml(item._title)}</div>
               <div class="card-meta">
-                <span class="time-badge">${formatTime(l.start)}${l.end ? ' – ' + formatTime(l.end) : ''}</span>
-                ${l.room ? ' · каб. ' + escapeHtml(l.room) : ''}
-                ${l.teacher ? ' · ' + escapeHtml(l.teacher) : ''}
+                <span class="time-badge">${formatTime(item.start)}${item.end ? ' – ' + formatTime(item.end) : ''}</span>
+                ${item._place ? ' · ' + escapeHtml(item._place) : ''}
+                ${item.teacher ? ' · ' + escapeHtml(item.teacher) : ''}
               </div>
             </div>
           </div>
-          ${l.items && l.items.length ? `
+          ${item.items && item.items.length ? `
             <div class="card-tags">
-              ${l.items.map(i => `<span class="tag">${escapeHtml(i)}</span>`).join('')}
+              ${item.items.map(i => `<span class="tag">${escapeHtml(i)}</span>`).join('')}
             </div>` : ''}
-        </div>
-      `;
+          ${gapHtml}
+        </div>`;
       }).join('');
-    }
-
-
-    // Clubs today
-    const clubsToday = state.clubs
-      .filter(c => c.day === day)
-      .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
-    if (clubsToday.length) {
-      list.innerHTML += `<h3 style="margin:20px 0 10px;font-size:1rem;color:var(--text-secondary)">Кружки сегодня</h3>` +
-        clubsToday.map(c => `
-          <div class="card">
-            <div class="card-header">
-              <div>
-                <div class="card-title">${escapeHtml(c.name)}</div>
-                <div class="card-meta">
-                  <span class="time-badge">${formatTime(c.start)}${c.end ? ' – ' + formatTime(c.end) : ''}</span>
-                  ${c.place ? ' · ' + escapeHtml(c.place) : ''}
-                </div>
-              </div>
-            </div>
-          </div>
-        `).join('');
     }
 
     // Quick pack
@@ -262,7 +452,10 @@
     if (!Object.keys(itemsMap).length) {
       packEl.innerHTML = '<p class="hint">Вещей на сегодня не указано</p>';
     } else {
-      packEl.innerHTML = Object.entries(itemsMap).map(([key, info]) => {
+      const entries = Object.entries(itemsMap);
+      const total = entries.length;
+      const done = entries.filter(([k]) => state.packChecks[k]).length;
+      packEl.innerHTML = `<p class="hint" style="margin-bottom:8px">Собрано ${done} из ${total}</p>` + entries.map(([key, info]) => {
         const checked = !!state.packChecks[key];
         return `
           <label class="pack-item ${checked ? 'checked' : ''}">
@@ -280,6 +473,157 @@
         });
       });
     }
+  }
+
+  function renderDayTimeline(day, allToday, bestMorningBus, bestEveningBus, nowMin) {
+    const el = document.getElementById('day-timeline');
+    if (!el) return;
+    const steps = [];
+
+    if (bestMorningBus) {
+      const b = bestMorningBus.bus;
+      const leaveAt = bestMorningBus.leaveAt;
+      const done = nowMin >= parseTime(b.time);
+      const active = !done && nowMin >= leaveAt - 15;
+      steps.push({
+        time: formatMinutes(Math.max(0, leaveAt)),
+        title: 'Выйти из дома',
+        meta: `Авт. № ${b.number} в ${formatTime(b.time)}` + (b.destination ? ` → ${b.destination}` : ''),
+        done, active, kind: 'bus'
+      });
+    }
+
+    allToday.forEach((item, idx) => {
+      const start = parseTime(item.start);
+      const end = parseTime(item.end) || (start !== null ? start + 45 : null);
+      const done = end !== null && nowMin >= end;
+      const active = start !== null && nowMin >= start && (end === null || nowMin < end);
+      steps.push({
+        time: formatTime(item.start),
+        title: (item._type === 'club' ? '🎯 ' : '') + item._title,
+        meta: (item._place ? item._place : '') + (item.end ? ` · до ${formatTime(item.end)}` : ''),
+        done, active, kind: item._type
+      });
+    });
+
+    if (bestEveningBus) {
+      const b = bestEveningBus.bus;
+      const done = nowMin >= bestEveningBus.busTime;
+      const active = !done && nowMin >= bestEveningBus.leaveSchoolAt - 10;
+      steps.push({
+        time: formatTime(b.time),
+        title: 'Автобус домой',
+        meta: `№ ${b.number}` + (b.destination ? ` → ${b.destination}` : '') + ` · выйти с уроков ~${formatMinutes(bestEveningBus.leaveSchoolAt)}`,
+        done, active, kind: 'bus'
+      });
+    }
+
+    if (!steps.length) {
+      el.innerHTML = '<p class="hint">Добавь уроки и автобусы — здесь появится цепочка дня</p>';
+      return;
+    }
+
+    el.innerHTML = steps.map((s, i) => `
+      <div class="tl-step ${s.done ? 'done' : ''} ${s.active ? 'active' : ''} ${s.kind}">
+        <div class="tl-rail">
+          <div class="tl-dot"></div>
+          ${i < steps.length - 1 ? '<div class="tl-line"></div>' : ''}
+        </div>
+        <div class="tl-body">
+          <div class="tl-time">${escapeHtml(s.time)}</div>
+          <div class="tl-title">${escapeHtml(s.title)}</div>
+          ${s.meta ? `<div class="tl-meta">${escapeHtml(s.meta)}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function formatMinutes(m) {
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0');
+  }
+
+  function computeFreeSlots(day, fromMin, toMin) {
+    const events = [];
+    state.lessons.filter(l => l.day === day).forEach(l => {
+      const s = parseTime(l.start), e = parseTime(l.end) || (s !== null ? s + 45 : null);
+      if (s !== null && e !== null) events.push({ start: s, end: e });
+    });
+    state.clubs.filter(c => c.day === day).forEach(c => {
+      const s = parseTime(c.start), e = parseTime(c.end) || (s !== null ? s + 60 : null);
+      if (s !== null && e !== null) events.push({ start: s, end: e });
+    });
+    events.sort((a, b) => a.start - b.start);
+    // merge overlapping
+    const merged = [];
+    for (const ev of events) {
+      if (!merged.length || ev.start > merged[merged.length - 1].end) merged.push({ ...ev });
+      else merged[merged.length - 1].end = Math.max(merged[merged.length - 1].end, ev.end);
+    }
+    const free = [];
+    let cursor = fromMin;
+    for (const ev of merged) {
+      if (ev.start > cursor) free.push({ start: cursor, end: Math.min(ev.start, toMin) });
+      cursor = Math.max(cursor, ev.end);
+    }
+    if (cursor < toMin) free.push({ start: cursor, end: toMin });
+    return free.filter(s => s.end - s.start >= 20); // at least 20 min
+  }
+
+  function renderWeekGrid() {
+    const grid = document.getElementById('week-grid');
+    if (!grid) return;
+
+    // Time range 8:00 – 18:00, 30-min slots for positioning
+    const dayStart = 8 * 60;
+    const dayEnd = 18 * 60;
+    const totalMin = dayEnd - dayStart;
+    const hourMarks = [];
+    for (let h = 8; h <= 18; h++) hourMarks.push(h);
+
+    // Collect all events for the week
+    const byDay = Array.from({ length: 7 }, () => []);
+    state.lessons.forEach(l => {
+      const s = parseTime(l.start), e = parseTime(l.end) || (s !== null ? s + 45 : null);
+      if (s === null || e === null) return;
+      byDay[l.day].push({ start: s, end: e, title: l.subject, type: 'lesson', room: l.room || '' });
+    });
+    state.clubs.forEach(c => {
+      const s = parseTime(c.start), e = parseTime(c.end) || (s !== null ? s + 60 : null);
+      if (s === null || e === null) return;
+      byDay[c.day].push({ start: s, end: e, title: c.name, type: 'club', room: c.place || '' });
+    });
+    byDay.forEach(arr => arr.sort((a, b) => a.start - b.start));
+
+    const today = todayIndex();
+    const colH = 280; // px height of grid body
+
+    let html = `<div class="wg-times">`;
+    for (let h = 8; h < 18; h++) {
+      html += `<div class="wg-hour" style="height:${colH / 10}px">${String(h).padStart(2,'0')}:00</div>`;
+    }
+    html += `</div><div class="wg-days">`;
+
+    for (let d = 0; d < 7; d++) {
+      const isToday = d === today;
+      html += `<div class="wg-day${isToday ? ' is-today' : ''}">`;
+      html += `<div class="wg-day-label">${DAYS[d]}</div>`;
+      html += `<div class="wg-day-body" style="height:${colH}px">`;
+      // free background is default
+      for (const ev of byDay[d]) {
+        const top = ((Math.max(ev.start, dayStart) - dayStart) / totalMin) * 100;
+        const height = ((Math.min(ev.end, dayEnd) - Math.max(ev.start, dayStart)) / totalMin) * 100;
+        if (height <= 0) continue;
+        const short = ev.title.length > 10 ? ev.title.slice(0, 9) + '…' : ev.title;
+        html += `<div class="wg-block ${ev.type}" style="top:${top}%;height:${Math.max(height, 3)}%" title="${escapeHtml(ev.title)} ${formatMinutes(ev.start)}–${formatMinutes(ev.end)}${ev.room ? ' · ' + ev.room : ''}">
+          <span class="wg-block-title">${escapeHtml(short)}</span>
+        </div>`;
+      }
+      html += `</div></div>`;
+    }
+    html += `</div>`;
+    grid.innerHTML = html;
   }
 
   function collectItemsForDay(day) {
@@ -686,8 +1030,8 @@
         <label>Время отправления *
           <input type="time" id="bf-time" class="input" required value="${bus ? bus.time || '' : ''}">
         </label>
-        <label>Куда
-          <input type="text" id="bf-dest" class="input" value="${bus ? escapeHtml(bus.destination || '') : ''}" placeholder="Школа / Дом / Остановка">
+        <label>Куда (пиши «Школа» или «Дом» — так планер поймёт направление)
+          <input type="text" id="bf-dest" class="input" value="${bus ? escapeHtml(bus.destination || '') : ''}" placeholder="Школа / Дом">
         </label>
         <label>Сколько минут идти до остановки
           <input type="number" id="bf-walk" class="input" min="0" max="120" value="${bus ? bus.walkMin || '' : ''}" placeholder="7">
@@ -762,11 +1106,15 @@
             </div>
           </div>
           ${n.body ? `<div class="card-body" style="white-space:pre-wrap;font-size:0.9rem">${escapeHtml(n.body)}</div>` : ''}
-          ${n.audio ? `<div style="margin-top:10px"><audio controls src="data:${n.audioMime || 'audio/webm'};base64,${n.audio}" style="width:100%;max-height:40px"></audio></div>` : ''}
+          ${n.audio ? `<div style="margin-top:10px"><audio controls src="data:${n.audioMime || 'audio/webm'};base64,${n.audio}" style="width:100%;max-height:40px"></audio>
+            <button class="btn btn-secondary btn-sm transcribe-note" data-id="${n.id}" style="margin-top:6px">🎤→ Текст (надиктовать)</button>
+            <p class="hint" style="margin-top:4px;font-size:0.75rem">Расшифровка через микрофон браузера (Chrome). Прослушай запись и надиктуй текст.</p>
+          </div>` : ''}
         </div>
       `).join('');
 
       list.querySelectorAll('.edit-note').forEach(b => b.addEventListener('click', () => openNoteModal(b.dataset.id)));
+      list.querySelectorAll('.transcribe-note').forEach(b => b.addEventListener('click', () => transcribeWithMicToNote(b.dataset.id)));
       list.querySelectorAll('.delete-note').forEach(b => b.addEventListener('click', () => {
         if (confirm('Удалить заметку?')) {
           state.notes = state.notes.filter(n => n.id !== b.dataset.id);
@@ -831,6 +1179,9 @@
     document.getElementById('pf-class').value = p.className || '';
     document.getElementById('pf-school').value = p.school || '';
     document.getElementById('pf-notes').value = p.notes || '';
+
+    renderPeople();
+    renderHolidays();
   }
 
   document.getElementById('profile-form').addEventListener('submit', (e) => {
@@ -847,7 +1198,289 @@
   });
 
 
+
+  // ----- PEOPLE -----
+  function renderPeople() {
+    const list = document.getElementById('people-list');
+    if (!list) return;
+    const people = [...(state.people || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ru'));
+    if (!people.length) {
+      list.innerHTML = '<p class="hint">Пока никого нет</p>';
+      return;
+    }
+    const today = new Date();
+    list.innerHTML = people.map(p => {
+      const bday = nextBirthdayInfo(p.birthday);
+      const ageStr = p.age ? `, ${p.age} лет` : (bday && bday.turning ? `, исполнится ${bday.turning}` : '');
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">${escapeHtml(p.name)}${p.relation ? ' · ' + escapeHtml(p.relation) : ''}</div>
+              <div class="card-meta">
+                ${bday ? (bday.days === 0 ? '🎂 Сегодня день рождения!' : (bday.days <= 14 ? ('🎂 через ' + bday.days + ' дн. (' + bday.label + ')') : ('ДР: ' + bday.label))) : ''}${ageStr}
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="btn-icon edit-person" data-id="${p.id}" title="Изменить">✎</button>
+              <button class="btn-icon delete-person" data-id="${p.id}" title="Удалить">×</button>
+            </div>
+          </div>
+          ${(p.likes || p.dislikes || p.notes) ? `
+            <div class="card-body" style="font-size:0.85rem">
+              ${p.likes ? `<div>❤ Любит: ${escapeHtml(p.likes)}</div>` : ''}
+              ${p.dislikes ? `<div>✖ Не любит: ${escapeHtml(p.dislikes)}</div>` : ''}
+              ${p.notes ? `<div style="color:var(--text-secondary)">${escapeHtml(p.notes)}</div>` : ''}
+            </div>` : ''}
+        </div>`;
+    }).join('');
+    list.querySelectorAll('.edit-person').forEach(b => b.addEventListener('click', () => openPersonModal(b.dataset.id)));
+    list.querySelectorAll('.delete-person').forEach(b => b.addEventListener('click', () => {
+      if (confirm('Удалить карточку?')) {
+        state.people = state.people.filter(x => x.id !== b.dataset.id);
+        save();
+        renderPeople();
+        toast('Удалено');
+      }
+    }));
+  }
+
+  function nextBirthdayInfo(bday) {
+    if (!bday) return null;
+    // accept YYYY-MM-DD or MM-DD
+    let mm, dd, year = null;
+    const parts = String(bday).split('-').map(Number);
+    if (parts.length === 3) { year = parts[0]; mm = parts[1]; dd = parts[2]; }
+    else if (parts.length === 2) { mm = parts[0]; dd = parts[1]; }
+    else return null;
+    if (!mm || !dd) return null;
+    const now = new Date();
+    let next = new Date(now.getFullYear(), mm - 1, dd);
+    if (next < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+      next = new Date(now.getFullYear() + 1, mm - 1, dd);
+    }
+    const days = Math.round((next - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+    const label = next.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    let turning = null;
+    if (year) turning = next.getFullYear() - year;
+    return { days, label, turning, date: next };
+  }
+
+  function openPersonModal(id) {
+    const person = id ? state.people.find(x => x.id === id) : null;
+    const isEdit = !!person;
+    openModal(isEdit ? 'Карточка' : 'Новый человек', `
+      <form class="form">
+        <label>Имя *
+          <input type="text" id="pe-name" class="input" value="${person ? escapeHtml(person.name) : ''}" placeholder="Маша / Бабушка">
+        </label>
+        <label>Кто это
+          <input type="text" id="pe-relation" class="input" value="${person ? escapeHtml(person.relation || '') : ''}" placeholder="друг / одноклассник / мама / брат">
+        </label>
+        <label>День рождения
+          <input type="date" id="pe-bday" class="input" value="${person && person.birthday && person.birthday.length >= 8 ? person.birthday : ''}">
+        </label>
+        <label>Возраст (примерно)
+          <input type="number" id="pe-age" class="input" min="1" max="120" value="${person && person.age ? person.age : ''}" placeholder="14">
+        </label>
+        <label>Что любит
+          <input type="text" id="pe-likes" class="input" value="${person ? escapeHtml(person.likes || '') : ''}" placeholder="футбол, пицца, синий цвет">
+        </label>
+        <label>Что не любит
+          <input type="text" id="pe-dislikes" class="input" value="${person ? escapeHtml(person.dislikes || '') : ''}" placeholder="лук, ранний подъём">
+        </label>
+        <label>Заметки
+          <textarea id="pe-notes" class="input textarea" rows="2" placeholder="Любые детали">${person ? escapeHtml(person.notes || '') : ''}</textarea>
+        </label>
+      </form>
+    `, `
+      <button class="btn btn-secondary" id="modal-cancel">Отмена</button>
+      <button class="btn btn-primary" id="modal-save">${isEdit ? 'Сохранить' : 'Добавить'}</button>
+    `);
+    document.getElementById('modal-cancel').onclick = closeModal;
+    document.getElementById('modal-save').onclick = () => {
+      const name = document.getElementById('pe-name').value.trim();
+      if (!name) { toast('Укажи имя'); return; }
+      const data = {
+        id: person ? person.id : uid(),
+        name,
+        relation: document.getElementById('pe-relation').value.trim(),
+        birthday: document.getElementById('pe-bday').value || '',
+        age: document.getElementById('pe-age').value ? +document.getElementById('pe-age').value : null,
+        likes: document.getElementById('pe-likes').value.trim(),
+        dislikes: document.getElementById('pe-dislikes').value.trim(),
+        notes: document.getElementById('pe-notes').value.trim()
+      };
+      if (isEdit) {
+        const i = state.people.findIndex(x => x.id === id);
+        state.people[i] = data;
+      } else {
+        state.people.push(data);
+      }
+      save();
+      closeModal();
+      renderPeople();
+      toast(isEdit ? 'Сохранено' : 'Добавлено');
+    };
+  }
+
+  // ----- HOLIDAYS -----
+  function renderHolidays() {
+    const list = document.getElementById('holidays-list');
+    if (!list) return;
+    const items = [...(state.holidays || [])].sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+    if (!items.length) {
+      list.innerHTML = '<p class="hint">Каникулы не указаны</p>';
+      return;
+    }
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    list.innerHTML = items.map(h => {
+      let status = '';
+      if (h.start && h.end) {
+        if (todayStr >= h.start && todayStr <= h.end) status = '<span class="tag primary">Сейчас</span>';
+        else if (todayStr < h.start) status = '<span class="tag">Скоро</span>';
+        else status = '<span class="tag">Прошли</span>';
+      }
+      const startL = h.start ? new Date(h.start + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '?';
+      const endL = h.end ? new Date(h.end + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '?';
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">${escapeHtml(h.name)} ${status}</div>
+              <div class="card-meta">${startL} — ${endL}</div>
+            </div>
+            <div class="card-actions">
+              <button class="btn-icon edit-holiday" data-id="${h.id}">✎</button>
+              <button class="btn-icon delete-holiday" data-id="${h.id}">×</button>
+            </div>
+          </div>
+          ${h.homework ? `<div class="card-body" style="font-size:0.85rem"><strong>Задания:</strong> ${escapeHtml(h.homework)}</div>` : ''}
+          ${h.notes ? `<div class="card-body" style="font-size:0.85rem;color:var(--text-secondary)">${escapeHtml(h.notes)}</div>` : ''}
+        </div>`;
+    }).join('');
+    list.querySelectorAll('.edit-holiday').forEach(b => b.addEventListener('click', () => openHolidayModal(b.dataset.id)));
+    list.querySelectorAll('.delete-holiday').forEach(b => b.addEventListener('click', () => {
+      if (confirm('Удалить?')) {
+        state.holidays = state.holidays.filter(x => x.id !== b.dataset.id);
+        save();
+        renderHolidays();
+        toast('Удалено');
+      }
+    }));
+  }
+
+  function openHolidayModal(id) {
+    const h = id ? state.holidays.find(x => x.id === id) : null;
+    const isEdit = !!h;
+    openModal(isEdit ? 'Каникулы' : 'Новые каникулы', `
+      <form class="form">
+        <label>Название *
+          <input type="text" id="ho-name" class="input" value="${h ? escapeHtml(h.name) : ''}" placeholder="Осенние / Зимние / Весенние">
+        </label>
+        <div style="display:flex;gap:10px">
+          <label style="flex:1">Начало
+            <input type="date" id="ho-start" class="input" value="${h ? h.start || '' : ''}">
+          </label>
+          <label style="flex:1">Конец
+            <input type="date" id="ho-end" class="input" value="${h ? h.end || '' : ''}">
+          </label>
+        </div>
+        <label>Задания на каникулы
+          <textarea id="ho-hw" class="input textarea" rows="3" placeholder="Математика: стр. 40–42&#10;Чтение: 2 рассказа">${h ? escapeHtml(h.homework || '') : ''}</textarea>
+        </label>
+        <label>Заметки
+          <input type="text" id="ho-notes" class="input" value="${h ? escapeHtml(h.notes || '') : ''}" placeholder="Поездка к бабушке…">
+        </label>
+      </form>
+    `, `
+      <button class="btn btn-secondary" id="modal-cancel">Отмена</button>
+      <button class="btn btn-primary" id="modal-save">${isEdit ? 'Сохранить' : 'Добавить'}</button>
+    `);
+    document.getElementById('modal-cancel').onclick = closeModal;
+    document.getElementById('modal-save').onclick = () => {
+      const name = document.getElementById('ho-name').value.trim();
+      if (!name) { toast('Укажи название'); return; }
+      const data = {
+        id: h ? h.id : uid(),
+        name,
+        start: document.getElementById('ho-start').value,
+        end: document.getElementById('ho-end').value,
+        homework: document.getElementById('ho-hw').value.trim(),
+        notes: document.getElementById('ho-notes').value.trim()
+      };
+      if (isEdit) {
+        const i = state.holidays.findIndex(x => x.id === id);
+        state.holidays[i] = data;
+      } else state.holidays.push(data);
+      save();
+      closeModal();
+      renderHolidays();
+      toast(isEdit ? 'Сохранено' : 'Добавлено');
+    };
+  }
+
+  function getUpcomingBirthdays(withinDays = 21) {
+    return (state.people || [])
+      .map(p => {
+        const info = nextBirthdayInfo(p.birthday);
+        if (!info || info.days > withinDays) return null;
+        return { person: p, ...info };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.days - b.days);
+  }
+
+  function getActiveHoliday() {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return (state.holidays || []).find(h => h.start && h.end && todayStr >= h.start && todayStr <= h.end) || null;
+  }
+
+  function getNextHoliday() {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return [...(state.holidays || [])]
+      .filter(h => h.start && h.start > todayStr)
+      .sort((a, b) => a.start.localeCompare(b.start))[0] || null;
+  }
+
   // ----- VOICE -----
+
+  function tryTranscribeVoiceNote(noteId) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return; // not supported
+    // Only prompt if user wants - auto is unreliable for recorded files
+    // Web Speech API works with live mic, not easily with saved blob offline.
+    // We expose a button on the note instead.
+  }
+
+  function transcribeWithMicToNote(noteId) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      toast('Расшифровка недоступна в этом браузере (нужен Chrome)');
+      return;
+    }
+    const rec = new SR();
+    rec.lang = 'ru-RU';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    toast('Слушаю… говори сейчас');
+    rec.onresult = (e) => {
+      const text = e.results[0][0].transcript;
+      const note = state.notes.find(n => n.id === noteId);
+      if (note) {
+        note.body = (note.body ? note.body + '\n' : '') + text;
+        note.updated = Date.now();
+        if (note.title === 'Голосовая заметка') note.title = text.slice(0, 40) + (text.length > 40 ? '…' : '');
+        save();
+        renderNotes();
+        toast('Текст добавлен');
+      }
+    };
+    rec.onerror = () => toast('Не удалось распознать');
+    rec.start();
+  }
+
   async function startVoiceRecord() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       toast('Запись не поддерживается в этом браузере');
@@ -886,6 +1519,8 @@
           save();
           renderNotes();
           toast('Голосовая заметка сохранена');
+          // Try browser speech recognition (optional, online, Chrome)
+          tryTranscribeVoiceNote(note.id);
         };
         reader.readAsDataURL(blob);
       };
@@ -922,6 +1557,8 @@
         <label class="pack-item"><input type="checkbox" id="sh-clubs" checked> <span class="pack-label">Кружки</span></label>
         <label class="pack-item"><input type="checkbox" id="sh-buses" checked> <span class="pack-label">Автобусы</span></label>
         <label class="pack-item"><input type="checkbox" id="sh-notes" checked> <span class="pack-label">Заметки (без аудио)</span></label>
+        <label class="pack-item"><input type="checkbox" id="sh-people" checked> <span class="pack-label">Люди / ДР</span></label>
+        <label class="pack-item"><input type="checkbox" id="sh-holidays" checked> <span class="pack-label">Каникулы</span></label>
       </div>
     `, `
       <button class="btn btn-secondary" id="modal-cancel">Отмена</button>
@@ -942,6 +1579,8 @@
           return rest;
         });
       }
+      if (document.getElementById('sh-people')?.checked) out.people = state.people || [];
+      if (document.getElementById('sh-holidays')?.checked) out.holidays = state.holidays || [];
       return out;
     }
 
@@ -994,6 +1633,13 @@
       notes: [
         { id: 'n1', title: 'ДЗ на завтра', body: 'Математика: стр. 45 №12–15\nИстория: параграф 8', created: Date.now() - 86400000, updated: Date.now() - 86400000 }
       ],
+      people: [
+        { id: 'p1', name: 'Маша', relation: 'одноклассница', birthday: (function(){ const d=new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })(), age: 14, likes: 'рисование, котики', dislikes: 'контрольные', notes: '' },
+        { id: 'p2', name: 'Бабушка', relation: 'бабушка', birthday: '1954-11-12', age: null, likes: 'цветы', dislikes: '', notes: 'Позвонить в выходные' }
+      ],
+      holidays: [
+        { id: 'h1', name: 'Осенние каникулы', start: (function(){ const d=new Date(); d.setDate(d.getDate()+20); return d.toISOString().slice(0,10); })(), end: (function(){ const d=new Date(); d.setDate(d.getDate()+27); return d.toISOString().slice(0,10); })(), homework: 'Чтение: 3 рассказа\nМатематика: повторить таблицу', notes: '' }
+      ],
       packChecks: {},
       settings: { theme: state.settings.theme || 'light', activeDay: null }
     };
@@ -1009,7 +1655,7 @@
       toast('Неверный формат JSON');
       return false;
     }
-    if (!(parsed.lessons || parsed.clubs || parsed.profile || parsed.buses || parsed.notes || parsed.packChecks || parsed.settings)) {
+    if (!(parsed.lessons || parsed.clubs || parsed.profile || parsed.buses || parsed.notes || parsed.people || parsed.holidays || parsed.packChecks || parsed.settings)) {
       toast('JSON не похож на данные планера');
       return false;
     }
@@ -1019,12 +1665,16 @@
       clubs: Array.isArray(parsed.clubs) ? parsed.clubs : (state.clubs || []),
       buses: Array.isArray(parsed.buses) ? parsed.buses : state.buses,
       notes: Array.isArray(parsed.notes) ? parsed.notes : state.notes,
+      people: Array.isArray(parsed.people) ? parsed.people : (state.people || []),
+      holidays: Array.isArray(parsed.holidays) ? parsed.holidays : (state.holidays || []),
       packChecks: parsed.packChecks && typeof parsed.packChecks === 'object' ? parsed.packChecks : (state.packChecks || {}),
       settings: { ...state.settings, ...(parsed.settings || {}) }
     };
     if (!Array.isArray(state.lessons)) state.lessons = [];
     if (!Array.isArray(state.clubs)) state.clubs = [];
     if (!Array.isArray(state.buses)) state.buses = [];
+        if (!Array.isArray(state.people)) state.people = [];
+        if (!Array.isArray(state.holidays)) state.holidays = [];
     if (!Array.isArray(state.notes)) state.notes = [];
     save();
     applyTheme();
@@ -1182,6 +1832,8 @@
         clubs: [],
         buses: [],
         notes: [],
+        people: [],
+        holidays: [],
         packChecks: {},
         settings: { theme: state.settings.theme, activeDay: null }
       };
@@ -1198,6 +1850,8 @@
   });
   document.getElementById('add-bus-btn').addEventListener('click', () => openBusModal(null));
   document.getElementById('add-note-btn').addEventListener('click', () => openNoteModal(null));
+  document.getElementById('add-person-btn').addEventListener('click', () => openPersonModal(null));
+  document.getElementById('add-holiday-btn').addEventListener('click', () => openHolidayModal(null));
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
 
   // Schedule type switcher

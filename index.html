@@ -28,9 +28,9 @@
 
     <!-- Navigation -->
     <nav class="nav" id="main-nav">
-      <button class="nav-btn active" data-tab="today" title="Сегодня">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-        <span>Сегодня</span>
+      <button class="nav-btn active" data-tab="today" title="Дашборд">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span>Дашборд</span>
       </button>
       <button class="nav-btn" data-tab="schedule" title="Расписание">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
@@ -56,17 +56,50 @@
 
     <!-- Main content -->
     <main class="main">
-      <!-- TODAY -->
+      <!-- DASHBOARD / TODAY -->
       <section id="tab-today" class="tab active">
         <div class="section-header">
           <h2 id="today-date">Сегодня</h2>
           <p class="subtitle" id="today-weekday"></p>
         </div>
-        <div id="today-lessons" class="cards-list"></div>
-        <div id="today-empty" class="empty-state hidden">
-          <p>На сегодня уроков нет</p>
-          <button class="btn btn-secondary" data-goto="schedule">Добавить в расписание</button>
+
+        <!-- Big next action for the child -->
+        <div id="dash-hero"></div>
+
+        <!-- Status + guidance -->
+        <div id="dash-status"></div>
+
+        <!-- Day timeline: leave → school → home -->
+        <div class="dash-section">
+          <h3>План дня</h3>
+          <div id="day-timeline" class="day-timeline"></div>
         </div>
+
+        <!-- Visual week grid -->
+        <div class="dash-section">
+          <div class="dash-section-head">
+            <h3>Неделя</h3>
+            <div class="dash-legend">
+              <span class="legend-item lesson"><i></i>Урок</span>
+              <span class="legend-item club"><i></i>Кружок</span>
+              <span class="legend-item free"><i></i>Свободно</span>
+            </div>
+          </div>
+          <div class="week-grid-wrap">
+            <div id="week-grid" class="week-grid"></div>
+          </div>
+        </div>
+
+        <!-- Today's list -->
+        <div class="dash-section">
+          <h3>Сегодня по часам</h3>
+          <div id="today-lessons" class="cards-list"></div>
+          <div id="today-empty" class="empty-state hidden">
+            <p>На сегодня ничего нет</p>
+            <button class="btn btn-secondary" data-goto="schedule">Добавить в расписание</button>
+          </div>
+        </div>
+
         <div class="quick-pack">
           <h3>Что взять сегодня</h3>
           <div id="today-pack-list" class="pack-list"></div>
@@ -167,6 +200,20 @@
           </label>
           <button type="submit" class="btn btn-primary">Сохранить профиль</button>
         </form>
+
+        <div class="divider"></div>
+
+        <h3>Люди и дни рождения</h3>
+        <p class="hint">Друзья, одноклассники, родственники — чтобы не забыть поздравить.</p>
+        <div id="people-list" class="cards-list"></div>
+        <button class="btn btn-secondary btn-sm" id="add-person-btn" style="margin-top:8px">+ Человек</button>
+
+        <div class="divider"></div>
+
+        <h3>Каникулы</h3>
+        <p class="hint">Когда начинаются и заканчиваются, какие задания на каникулы.</p>
+        <div id="holidays-list" class="cards-list"></div>
+        <button class="btn btn-secondary btn-sm" id="add-holiday-btn" style="margin-top:8px">+ Каникулы</button>
 
         <div class="divider"></div>
 

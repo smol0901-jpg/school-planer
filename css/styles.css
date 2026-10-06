@@ -778,3 +778,286 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
+
+/* ===== Dashboard / Week grid ===== */
+.dash-section {
+  margin-top: 20px;
+}
+.dash-section h3 {
+  font-size: 1rem;
+  margin-bottom: 10px;
+  color: var(--text-secondary);
+}
+.dash-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.dash-section-head h3 { margin-bottom: 0; }
+
+.dash-legend {
+  display: flex;
+  gap: 10px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.legend-item i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.legend-item.lesson i { background: var(--primary); }
+.legend-item.club i { background: var(--success); }
+.legend-item.free i { background: var(--border); }
+
+.today-status.free-slots {
+  background: color-mix(in srgb, var(--success) 8%, var(--bg-card));
+  border-color: color-mix(in srgb, var(--success) 30%, var(--border));
+}
+
+.week-grid-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+
+.week-grid {
+  display: flex;
+  min-width: 340px;
+  font-size: 0.7rem;
+}
+
+.wg-times {
+  flex-shrink: 0;
+  width: 40px;
+  padding-top: 28px; /* match day label */
+  color: var(--text-secondary);
+}
+.wg-hour {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding-right: 4px;
+  box-sizing: border-box;
+  border-top: 1px solid transparent;
+}
+
+.wg-days {
+  display: flex;
+  flex: 1;
+}
+
+.wg-day {
+  flex: 1;
+  min-width: 42px;
+  border-left: 1px solid var(--border);
+}
+.wg-day.is-today {
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+.wg-day-label {
+  text-align: center;
+  font-weight: 700;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.wg-day.is-today .wg-day-label {
+  color: var(--primary);
+}
+
+.wg-day-body {
+  position: relative;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(10% - 1px),
+      var(--border) calc(10% - 1px),
+      var(--border) 10%
+    );
+}
+
+.wg-block {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  border-radius: 4px;
+  padding: 2px 3px;
+  overflow: hidden;
+  color: white;
+  font-weight: 600;
+  line-height: 1.15;
+  box-sizing: border-box;
+  z-index: 1;
+}
+.wg-block.lesson {
+  background: var(--primary);
+}
+.wg-block.club {
+  background: var(--success);
+}
+.wg-block-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.65rem;
+}
+
+.card.club-card {
+  border-left: 3px solid var(--success);
+}
+
+@media (min-width: 400px) {
+  .wg-block-title { font-size: 0.7rem; }
+  .wg-day { min-width: 48px; }
+}
+
+/* ===== Hero card (what to do now) ===== */
+.hero-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+.hero-card.urgent {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--bg-card));
+}
+.hero-card.current {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--bg-card));
+}
+.hero-card.next {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 8%, var(--bg-card));
+}
+.hero-card.muted {
+  opacity: 0.9;
+}
+.hero-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.hero-card.urgent .hero-label { color: var(--danger); }
+.hero-card.current .hero-label { color: var(--primary); }
+.hero-card.next .hero-label { color: var(--success); }
+.hero-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-bottom: 6px;
+}
+.hero-meta {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+.hero-items {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* ===== Day timeline ===== */
+.day-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.tl-step {
+  display: flex;
+  gap: 12px;
+  min-height: 52px;
+}
+.tl-rail {
+  width: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+.tl-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--border);
+  border: 2px solid var(--bg-card);
+  box-shadow: 0 0 0 2px var(--border);
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.tl-step.active .tl-dot {
+  background: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.tl-step.done .tl-dot {
+  background: var(--success);
+  box-shadow: 0 0 0 2px var(--success);
+}
+.tl-step.bus .tl-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px #f59e0b;
+}
+.tl-line {
+  width: 2px;
+  flex: 1;
+  background: var(--border);
+  min-height: 20px;
+}
+.tl-step.done .tl-line {
+  background: color-mix(in srgb, var(--success) 50%, var(--border));
+}
+.tl-body {
+  flex: 1;
+  padding-bottom: 14px;
+}
+.tl-time {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+.tl-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.tl-step.done .tl-title {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.tl-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+.gap-hint {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+}
+
+.today-status.bday {
+  background: color-mix(in srgb, #ec4899 10%, var(--bg-card));
+  border-color: color-mix(in srgb, #ec4899 35%, var(--border));
+}
