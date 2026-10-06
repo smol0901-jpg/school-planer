@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0f172a">
-  <meta name="description" content="Школьный планер — расписание, что взять, автобусы, заметки. Работает офлайн.">
+  <meta name="description" content="Школьный планер — расписание, кружки, автобусы, каникулы, дни рождения. Полностью офлайн.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Школьный планер</title>
@@ -218,7 +218,7 @@
         <div class="divider"></div>
 
         <h3>Данные</h3>
-        <p class="hint">Все данные хранятся только на этом устройстве. Никуда не отправляются.</p>
+        <p class="hint">Все данные хранятся только на этом устройстве. Никуда не отправляются. Без интернета приложение работает полностью.</p>
         <div class="data-actions">
           <button class="btn btn-secondary" id="export-json">Экспорт JSON</button>
           <button class="btn btn-secondary" id="share-data">Поделиться / выборочно</button>
@@ -226,8 +226,49 @@
           <input type="file" id="import-file" accept=".json,application/json" hidden>
           <button class="btn btn-secondary" id="generate-prompt">Промпт для нейросети</button>
           <button class="btn btn-secondary" id="load-demo">Загрузить пример</button>
+          <button class="btn btn-primary" id="check-update">Обновить приложение</button>
+          <p class="hint" id="app-version-label" style="margin-top:4px"></p>
           <button class="btn btn-danger" id="clear-data">Очистить всё</button>
         </div>
+
+        <div class="divider"></div>
+
+        <h3>Об авторе</h3>
+        <div class="about-card">
+          <div class="about-name">Смолянинов Александр Вячеславович</div>
+          <div class="about-label">Лейбл: NEURAL_ARCHITECT_PREMIUM++</div>
+          <p class="hint" style="margin-top:8px">Приложение «Школьный планер» — отдельный продукт. Работает офлайн на вашем устройстве.</p>
+          <div class="about-contacts">
+            <a class="contact-chip" href="https://t.me/ASV_PROD" target="_blank" rel="noopener">Telegram ASV_PROD</a>
+            <a class="contact-chip" href="https://dzen.ru/ASV_PROD" target="_blank" rel="noopener">Дзен ASV_PROD</a>
+            <a class="contact-chip" href="https://vk.com/smolyaninovchef" target="_blank" rel="noopener">VK smolyAninovchef</a>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="feedback-btn" style="margin-top:12px;width:100%">Обратная связь</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <h3>Другие инструменты автора</h3>
+        <p class="hint">Откроются в браузере (нужен интернет). Планер при этом продолжает работать офлайн.</p>
+        <div class="tools-list">
+          <a class="tool-card" href="https://smol0901-jpg.github.io/Cifra/" target="_blank" rel="noopener">
+            <div class="tool-title">Cifra</div>
+            <div class="tool-meta">smol0901-jpg.github.io/Cifra</div>
+          </a>
+          <a class="tool-card" href="https://smol0901-jpg.github.io/Flowforge-2-3/" target="_blank" rel="noopener">
+            <div class="tool-title">Flowforge 2.3</div>
+            <div class="tool-meta">Автоматизация и потоки</div>
+          </a>
+          <a class="tool-card" href="https://smol0901-jpg.github.io/haccp-studio-v8/" target="_blank" rel="noopener">
+            <div class="tool-title">HACCP Studio v8</div>
+            <div class="tool-meta">Электронные журналы ХАССП</div>
+          </a>
+          <a class="tool-card" href="https://lenpitspb.netlify.app/" target="_blank" rel="noopener">
+            <div class="tool-title">LenPit SPB</div>
+            <div class="tool-meta">lenpitspb.netlify.app</div>
+          </a>
+        </div>
+
         <div id="prompt-box" class="prompt-box hidden">
           <p>Скопируй этот промпт, вставь в нейросеть (ChatGPT, Claude, Grok и т.д.), получи JSON и импортируй обратно:</p>
           <textarea id="ai-prompt" class="input textarea" rows="8" readonly></textarea>

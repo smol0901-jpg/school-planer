@@ -1061,3 +1061,70 @@ body {
   background: color-mix(in srgb, #ec4899 10%, var(--bg-card));
   border-color: color-mix(in srgb, #ec4899 35%, var(--border));
 }
+
+/* About & tools */
+.about-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 8px;
+}
+.about-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.about-label {
+  font-size: 0.85rem;
+  color: var(--primary);
+  font-weight: 600;
+  margin-top: 4px;
+}
+.about-contacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.contact-chip {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.contact-chip:active {
+  background: var(--border);
+}
+.tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.tool-card {
+  display: block;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.tool-card:active {
+  transform: scale(0.99);
+}
+.tool-title {
+  font-weight: 700;
+  font-size: 1rem;
+}
+.tool-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}

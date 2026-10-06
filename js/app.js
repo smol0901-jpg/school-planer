@@ -2,6 +2,8 @@
   'use strict';
 
   const STORAGE_KEY = 'school-planner-v1';
+  const BACKUP_KEY = 'school-planner-backup-v1';
+  const APP_VERSION = '2.2.0';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 
@@ -31,29 +33,67 @@
 
   function save() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const raw = JSON.stringify(state);
+      localStorage.setItem(STORAGE_KEY, raw);
+      localStorage.setItem(BACKUP_KEY, raw);
     } catch (e) {
       toast('Не удалось сохранить данные');
     }
   }
 
-  function load() {
+  function migrateState(parsed) {
+    const base = {
+      profile: { name: '', className: '', school: '', notes: '' },
+      lessons: [],
+      clubs: [],
+      buses: [],
+      notes: [],
+      people: [],
+      holidays: [],
+      packChecks: {},
+      settings: { theme: 'light', activeDay: null }
+    };
+    const s = { ...base, ...(parsed || {}) };
+    s.profile = { ...base.profile, ...(s.profile || {}) };
+    s.settings = { ...base.settings, ...(s.settings || {}) };
+    for (const k of ['lessons', 'clubs', 'buses', 'notes', 'people', 'holidays']) {
+      if (!Array.isArray(s[k])) s[k] = [];
+    }
+    if (!s.packChecks || typeof s.packChecks !== 'object') s.packChecks = {};
+    return s;
+  }
+
+  function backupData() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) localStorage.setItem(BACKUP_KEY, raw);
+    } catch (e) { console.warn('backup failed', e); }
+  }
+
+  function load() {
+    try {
+      let raw = localStorage.getItem(STORAGE_KEY);
+      // If main data missing after update, try backup
+      if (!raw) {
+        const bak = localStorage.getItem(BACKUP_KEY);
+        if (bak) {
+          raw = bak;
+          localStorage.setItem(STORAGE_KEY, bak);
+          console.info('Restored data from backup after update');
+        }
+      }
       if (raw) {
         const parsed = JSON.parse(raw);
-        state = { ...state, ...parsed };
-        if (!state.packChecks) state.packChecks = {};
-        if (!state.settings) state.settings = { theme: 'light', activeDay: null };
-        if (!Array.isArray(state.clubs)) state.clubs = [];
-        if (!Array.isArray(state.notes)) state.notes = [];
-        if (!Array.isArray(state.lessons)) state.lessons = [];
-        if (!Array.isArray(state.buses)) state.buses = [];
-        if (!Array.isArray(state.people)) state.people = [];
-        if (!Array.isArray(state.holidays)) state.holidays = [];
+        state = migrateState(parsed);
+        // Keep a fresh backup of migrated data
+        backupData();
       }
     } catch (e) {
       console.warn('Load error', e);
+      try {
+        const bak = localStorage.getItem(BACKUP_KEY);
+        if (bak) state = migrateState(JSON.parse(bak));
+      } catch (_) {}
     }
   }
 
@@ -1869,14 +1909,133 @@
   // Share & demo
   document.getElementById('share-data').addEventListener('click', openShareModal);
   document.getElementById('load-demo').addEventListener('click', loadDemoData);
+  document.getElementById('check-update').addEventListener('click', () => checkForUpdate(true));
+  const fb = document.getElementById('feedback-btn');
+  if (fb) fb.addEventListener('click', openFeedback);
+
+
+  // ---------- App update ----------
+  function openFeedback() {
+    openModal('Обратная связь', `
+      <p class="hint">Напиши ideю, ошибку или вопрос. Выбери удобный способ:</p>
+      <div class="data-actions" style="margin-top:12px">
+        <a class="btn btn-primary" href="https://t.me/ASV_PROD" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">Telegram ASV_PROD</a>
+        <a class="btn btn-secondary" href="https://vk.com/smolyaninovchef" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">ВКонтакте smolyAninovchef</a>
+        <a class="btn btn-secondary" href="https://dzen.ru/ASV_PROD" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">Дзен ASV_PROD</a>
+      </div>
+      <p class="hint" style="margin-top:14px">Автор: Смолянинов Александр Вячеславович<br>Лейбл: NEURAL_ARCHITECT_PREMIUM++</p>
+      <p class="hint">«Школьный планер» работает без интернета. Ссылки откроются, только если сеть есть.</p>
+    `, `
+      <button class="btn btn-secondary" id="modal-cancel">Закрыть</button>
+    `);
+    document.getElementById('modal-cancel').onclick = closeModal;
+  }
+
+  async function checkForUpdate(manual = true) {
+    const btn = document.getElementById('check-update');
+    if (btn && manual) {
+      btn.disabled = true;
+      btn.textContent = 'Проверка…';
+    }
+    try {
+      // 1) Backup data before any reload
+      backupData();
+
+      // 2) Fetch remote version (bypass cache)
+      const res = await fetch('./version.json?t=' + Date.now(), { cache: 'no-store' });
+      if (!res.ok) throw new Error('version fetch failed');
+      const remote = await res.json();
+      const remoteVer = String(remote.version || '');
+
+      const label = document.getElementById('app-version-label');
+      if (label) {
+        label.textContent = 'Версия: ' + APP_VERSION + (remoteVer && remoteVer !== APP_VERSION ? ' → доступна ' + remoteVer : ' (актуальная)');
+      }
+
+      if (remoteVer && remoteVer !== APP_VERSION) {
+        if (manual) {
+          const ok = confirm(
+            'Доступна новая версия ' + remoteVer + (remote.notes ? '\\n\\n' + remote.notes : '') +
+            '\\n\\nОбновить сейчас? Все твои данные (уроки, автобусы, люди…) сохранятся.'
+          );
+          if (!ok) {
+            if (btn) { btn.disabled = false; btn.textContent = 'Обновить приложение'; }
+            return;
+          }
+        }
+        await applyUpdate();
+      } else {
+        if (manual) toast('У тебя уже последняя версия (' + APP_VERSION + ')');
+      }
+    } catch (err) {
+      console.warn(err);
+      if (manual) toast('Не удалось проверить обновление (нужен интернет)');
+    } finally {
+      if (btn && manual) {
+        btn.disabled = false;
+        btn.textContent = 'Обновить приложение';
+      }
+    }
+  }
+
+  async function applyUpdate() {
+    toast('Обновление… данные сохранены');
+    backupData();
+    try {
+      // Clear all caches
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      // Tell SW to skip waiting / re-register
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const reg of regs) {
+          if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          await reg.update();
+        }
+        // Unregister and re-register for clean slate
+        for (const reg of regs) await reg.unregister();
+        await navigator.serviceWorker.register('sw.js?v=' + Date.now());
+      }
+    } catch (e) {
+      console.warn('SW update error', e);
+    }
+    // Hard reload — localStorage (and BACKUP_KEY) survive
+    setTimeout(() => {
+      location.href = './index.html?updated=' + Date.now();
+    }, 400);
+  }
+
+  function showVersionLabel() {
+    const label = document.getElementById('app-version-label');
+    if (label) label.textContent = 'Версия: ' + APP_VERSION;
+  }
 
   // ---------- Init ----------
   load();
   applyTheme();
+  showVersionLabel();
   // Refresh buses countdown and today status every 30s
   setInterval(() => {
     if (currentTab === 'buses') renderBuses();
     if (currentTab === 'today') renderToday();
   }, 30000);
   render();
+
+  // If opened after update — confirm data still there
+  if (location.search.includes('updated=')) {
+    toast('Приложение обновлено · данные на месте');
+    history.replaceState(null, '', './index.html');
+  }
+
+  // Optional silent check once per day when online
+  try {
+    const last = localStorage.getItem('school-planner-last-update-check');
+    const now = Date.now();
+    if (!last || now - Number(last) > 7 * 24 * 3600 * 1000) {
+      localStorage.setItem('school-planner-last-update-check', String(now));
+      if (navigator.onLine) checkForUpdate(false);
+    }
+  } catch (_) {}
 })();
