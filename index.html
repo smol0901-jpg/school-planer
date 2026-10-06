@@ -178,15 +178,15 @@
           <h2>Профиль</h2>
         </div>
 
-        <div class="segmented profile-tabs" id="profile-tabs">
-          <button class="seg-btn active" data-ptab="me">Я</button>
-          <button class="seg-btn" data-ptab="people">Люди</button>
-          <button class="seg-btn" data-ptab="holidays">Каникулы</button>
-          <button class="seg-btn" data-ptab="data">Данные</button>
-          <button class="seg-btn" data-ptab="qr">QR-обмен</button>
-          <button class="seg-btn" data-ptab="settings">Вид</button>
-          <button class="seg-btn" data-ptab="templates">Шаблоны</button>
-          <button class="seg-btn" data-ptab="about">О приложении</button>
+        <div class="profile-nav" id="profile-tabs">
+          <button class="pnav-btn active" data-ptab="me"><span class="pnav-ic">👤</span><span>Я</span></button>
+          <button class="pnav-btn" data-ptab="people"><span class="pnav-ic">👥</span><span>Люди</span></button>
+          <button class="pnav-btn" data-ptab="holidays"><span class="pnav-ic">🏖️</span><span>Каникулы</span></button>
+          <button class="pnav-btn" data-ptab="data"><span class="pnav-ic">💾</span><span>Данные</span></button>
+          <button class="pnav-btn" data-ptab="qr"><span class="pnav-ic">📷</span><span>QR</span></button>
+          <button class="pnav-btn" data-ptab="settings"><span class="pnav-ic">🎨</span><span>Вид</span></button>
+          <button class="pnav-btn" data-ptab="templates"><span class="pnav-ic">📄</span><span>Шаблоны</span></button>
+          <button class="pnav-btn" data-ptab="about"><span class="pnav-ic">ℹ️</span><span>О нас</span></button>
         </div>
 
         <div class="ptab active" id="ptab-me">
@@ -387,6 +387,7 @@
   </div>
 
   <script src="js/qrcode.js"></script>
+  <script src="js/jsQR.js"></script>
   <script src="js/app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {

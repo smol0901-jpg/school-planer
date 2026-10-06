@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'school-planner-v1';
   const BACKUP_KEY = 'school-planner-backup-v1';
-  const APP_VERSION = '2.4.0';
+  const APP_VERSION = '2.4.1';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 
@@ -2035,13 +2035,14 @@
   // Profile sub-tabs
   let profileTab = 'me';
   document.getElementById('profile-tabs')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.seg-btn');
-    if (!btn) return;
+    const btn = e.target.closest('.pnav-btn, .seg-btn');
+    if (!btn || !btn.dataset.ptab) return;
     profileTab = btn.dataset.ptab;
-    document.querySelectorAll('#profile-tabs .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.ptab === profileTab));
+    document.querySelectorAll('#profile-tabs .pnav-btn, #profile-tabs .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.ptab === profileTab));
     document.querySelectorAll('.ptab').forEach(t => t.classList.toggle('active', t.id === 'ptab-' + profileTab));
     if (profileTab === 'people') renderPeople();
     if (profileTab === 'holidays') renderHolidays();
+    if (profileTab === 'settings') fillSettingsForm();
   });
 
   // Profile photo
@@ -2321,22 +2322,39 @@
       document.getElementById('qr-scan-stop').classList.remove('hidden');
       await video.play();
 
-      // Prefer BarcodeDetector
+      const canvas = document.getElementById('qr-scan-canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      let detector = null;
       if ('BarcodeDetector' in window) {
-        const detector = new BarcodeDetector({ formats: ['qr_code'] });
-        qrScanTimer = setInterval(async () => {
+        try { detector = new BarcodeDetector({ formats: ['qr_code'] }); } catch (_) {}
+      }
+      toast('Наведи камеру на QR');
+      qrScanTimer = setInterval(async () => {
+        if (!video.videoWidth) return;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // 1) BarcodeDetector (Chrome)
+        if (detector) {
           try {
-            const codes = await detector.detect(video);
+            const codes = await detector.detect(canvas);
             if (codes && codes[0] && codes[0].rawValue) {
               stopQrScan();
               importFromPayloadString(codes[0].rawValue);
+              return;
             }
           } catch (_) {}
-        }, 500);
-        toast('Наведи камеру на QR');
-      } else {
-        toast('Автоскан недоступен в этом браузере. Сфоткай QR другим приложением и вставь текст, либо выбери «Фото QR».');
-      }
+        }
+        // 2) jsQR (Safari / iOS / fallback)
+        if (typeof jsQR === 'function') {
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+          if (code && code.data) {
+            stopQrScan();
+            importFromPayloadString(code.data);
+          }
+        }
+      }, 400);
     } catch (err) {
       toast('Нет доступа к камере');
     }
@@ -2350,20 +2368,36 @@
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    if (!('BarcodeDetector' in window)) {
-      toast('Распознавание с фото не поддерживается — используй камеру Chrome или вставку текста');
-      return;
-    }
     try {
       const bmp = await createImageBitmap(file);
-      const detector = new BarcodeDetector({ formats: ['qr_code'] });
-      const codes = await detector.detect(bmp);
-      if (codes && codes[0] && codes[0].rawValue) {
-        importFromPayloadString(codes[0].rawValue);
-      } else {
-        toast('QR на фото не найден');
+      // Try BarcodeDetector
+      if ('BarcodeDetector' in window) {
+        try {
+          const detector = new BarcodeDetector({ formats: ['qr_code'] });
+          const codes = await detector.detect(bmp);
+          if (codes && codes[0] && codes[0].rawValue) {
+            importFromPayloadString(codes[0].rawValue);
+            return;
+          }
+        } catch (_) {}
       }
+      // jsQR fallback
+      if (typeof jsQR === 'function') {
+        const canvas = document.createElement('canvas');
+        canvas.width = bmp.width;
+        canvas.height = bmp.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bmp, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+        if (code && code.data) {
+          importFromPayloadString(code.data);
+          return;
+        }
+      }
+      toast('QR на фото не найден — попробуй ближе и ровнее');
     } catch (err) {
+      console.warn(err);
       toast('Не удалось разобрать фото');
     }
   });
@@ -2371,10 +2405,7 @@
   // When switching to settings tab — fill form
   const _ptabHandler = document.getElementById('profile-tabs');
   // augment existing click via capture
-  document.getElementById('profile-tabs')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.seg-btn');
-    if (btn && btn.dataset.ptab === 'settings') fillSettingsForm();
-  });
+  // settings form fill handled in main profile-tabs handler
 
   // ---------- Init ----------
   load();

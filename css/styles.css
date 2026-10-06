@@ -1214,3 +1214,44 @@ html {
 #qr-canvas-wrap svg {
   display: inline-block;
 }
+
+/* Profile navigation — clean grid */
+.profile-nav {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.pnav-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  min-height: 58px;
+}
+.pnav-btn .pnav-ic {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.pnav-btn.active {
+  background: color-mix(in srgb, var(--primary) 14%, var(--bg-card));
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  color: var(--primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+.pnav-btn:active {
+  transform: scale(0.97);
+}
+@media (min-width: 400px) {
+  .pnav-btn { font-size: 0.78rem; }
+}
