@@ -1255,3 +1255,66 @@ html {
 @media (min-width: 400px) {
   .pnav-btn { font-size: 0.78rem; }
 }
+
+/* Lessons + breaks */
+.break-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+  padding: 0 4px;
+}
+.break-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.break-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px dashed var(--border);
+}
+.break-row.break-long .break-label {
+  border-style: solid;
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 40%, var(--border));
+}
+.lesson-num {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+/* Mood */
+.mood-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.mood-btn {
+  flex: 1;
+  font-size: 1.4rem;
+  padding: 10px 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  cursor: pointer;
+}
+.mood-btn.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--bg-card));
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+/* 7 nav items */
+.nav-btn span {
+  font-size: 0.6rem;
+}
+.nav-btn svg {
+  width: 20px;
+  height: 20px;
+}

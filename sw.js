@@ -1,5 +1,5 @@
 /* School Planner service worker — versioned cache */
-const VERSION = '2.4.1';
+const VERSION = '2.5.0';
 const CACHE = 'school-planner-' + VERSION;
 const ASSETS = [
   './',

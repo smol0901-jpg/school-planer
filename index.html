@@ -48,6 +48,10 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <span>Заметки</span>
       </button>
+      <button class="nav-btn" data-tab="diary" title="Дневник">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        <span>Дневник</span>
+      </button>
       <button class="nav-btn" data-tab="profile" title="Профиль">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         <span>Профиль</span>
@@ -90,14 +94,23 @@
           </div>
         </div>
 
-        <!-- Today's list -->
+        <!-- Today's list with breaks -->
         <div class="dash-section">
-          <h3>Сегодня по часам</h3>
+          <h3>Уроки и перемены</h3>
           <div id="today-lessons" class="cards-list"></div>
           <div id="today-empty" class="empty-state hidden">
             <p>На сегодня ничего нет</p>
             <button class="btn btn-secondary" data-goto="schedule">Добавить в расписание</button>
           </div>
+        </div>
+
+        <!-- Quick day summary on dashboard -->
+        <div class="dash-section">
+          <div class="dash-section-head">
+            <h3>Итог дня</h3>
+            <button class="btn btn-secondary btn-sm" data-goto="diary">Дневник</button>
+          </div>
+          <div id="dash-daylog"></div>
         </div>
 
         <div class="quick-pack">
@@ -169,6 +182,66 @@
         <div id="notes-list" class="cards-list"></div>
         <div id="notes-empty" class="empty-state hidden">
           <p>Заметок пока нет</p>
+        </div>
+      </section>
+
+
+      <!-- DIARY -->
+      <section id="tab-diary" class="tab">
+        <div class="section-header">
+          <h2>Дневник</h2>
+          <button class="btn btn-primary btn-sm" id="diary-save-btn">Сохранить</button>
+        </div>
+        <p class="hint">Коротко: как прошёл день, где был после школы, были ли замечания. Это для себя и родителей — не обязательно писать каждый день.</p>
+
+        <label class="hint" style="display:block;margin-bottom:6px">Дата
+          <input type="date" id="diary-date" class="input" style="margin-top:4px">
+        </label>
+
+        <div class="form" style="margin-top:12px">
+          <label>Как прошёл день
+            <div class="mood-row" id="diary-mood">
+              <button type="button" class="mood-btn" data-mood="1" title="Тяжело">😢</button>
+              <button type="button" class="mood-btn" data-mood="2" title="Так себе">😐</button>
+              <button type="button" class="mood-btn" data-mood="3" title="Нормально">🙂</button>
+              <button type="button" class="mood-btn" data-mood="4" title="Хорошо">😊</button>
+              <button type="button" class="mood-btn" data-mood="5" title="Отлично">🤩</button>
+            </div>
+          </label>
+          <label>Где остался после школы
+            <select id="diary-stayed" class="select">
+              <option value="">Не указано</option>
+              <option value="home">Дома</option>
+              <option value="grandma">У бабушки / дедушки</option>
+              <option value="dad">У папы</option>
+              <option value="mom">У мамы</option>
+              <option value="friend">У друга / подруги</option>
+              <option value="club">На кружке / секции</option>
+              <option value="other">Другое</option>
+            </select>
+          </label>
+          <label id="diary-stayed-other-wrap" class="hidden">Уточни где
+            <input type="text" id="diary-stayed-other" class="input" placeholder="Например, у тёти">
+          </label>
+          <label>Замечания в школе
+            <textarea id="diary-remarks" class="input textarea" rows="2" placeholder="От учителя, завуча… или «не было»"></textarea>
+          </label>
+          <label>Инциденты / ситуации
+            <textarea id="diary-incidents" class="input textarea" rows="2" placeholder="Ссора, опоздание, потерял что-то…"></textarea>
+          </label>
+          <label>Взять на заметку
+            <textarea id="diary-notes" class="input textarea" rows="2" placeholder="Завтра взять справку, повторить стих…"></textarea>
+          </label>
+        </div>
+
+        <div class="divider"></div>
+        <div class="dash-section-head">
+          <h3>История</h3>
+          <select id="diary-month" class="select" style="width:auto;min-width:140px"></select>
+        </div>
+        <div id="diary-history" class="cards-list"></div>
+        <div id="diary-history-empty" class="empty-state hidden">
+          <p>Пока записей нет</p>
         </div>
       </section>
 

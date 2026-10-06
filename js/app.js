@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'school-planner-v1';
   const BACKUP_KEY = 'school-planner-backup-v1';
-  const APP_VERSION = '2.4.1';
+  const APP_VERSION = '2.5.0';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 
@@ -16,6 +16,7 @@
     notes: [],        // { id, title, body, created, updated, audio?, audioMime? }
     people: [],       // { id, name, relation, birthday (MM-DD or YYYY-MM-DD), age?, likes, dislikes, notes }
     holidays: [],     // { id, name, start (YYYY-MM-DD), end (YYYY-MM-DD), homework, notes }
+    dayLogs: [],      // { id, date, mood, stayedAt, stayedOther, remarks, incidents, notes }
     packChecks: {},   // { "itemKey": true }
     settings: { theme: 'light', activeDay: null, radius: 12, density: 'comfortable', fontSize: 16, shadows: true }
   };
@@ -56,7 +57,7 @@
     const s = { ...base, ...(parsed || {}) };
     s.profile = { ...base.profile, ...(s.profile || {}) };
     s.settings = { ...base.settings, ...(s.settings || {}) };
-    for (const k of ['lessons', 'clubs', 'buses', 'notes', 'people', 'holidays']) {
+    for (const k of ['lessons', 'clubs', 'buses', 'notes', 'people', 'holidays', 'dayLogs']) {
       if (!Array.isArray(s[k])) s[k] = [];
     }
     if (!s.packChecks || typeof s.packChecks !== 'object') s.packChecks = {};
@@ -207,6 +208,7 @@
     else if (currentTab === 'pack') renderPack();
     else if (currentTab === 'buses') renderBuses();
     else if (currentTab === 'notes') renderNotes();
+    else if (currentTab === 'diary') renderDiary();
     else if (currentTab === 'profile') renderProfile();
   }
 
@@ -458,7 +460,8 @@
       empty.classList.remove('hidden');
     } else {
       empty.classList.add('hidden');
-      list.innerHTML = allToday.map((item, idx) => {
+      let html = '';
+      allToday.forEach((item, idx) => {
         const start = parseTime(item.start);
         const end = parseTime(item.end) || (start !== null ? start + 45 : null);
         let cls = item._type === 'club' ? ' club-card' : '';
@@ -466,21 +469,15 @@
           if (nowMin >= start && (end === null || nowMin < end)) cls += ' lesson-current';
           else if (end !== null && nowMin >= end) cls += ' lesson-past';
         }
-        // gap to next
-        let gapHtml = '';
-        if (idx < allToday.length - 1) {
-          const nextStart = parseTime(allToday[idx + 1].start);
-          if (end !== null && nextStart !== null && nextStart - end >= 15) {
-            gapHtml = `<div class="gap-hint">Свободно ${nextStart - end} мин до следующего</div>`;
-          } else if (end !== null && nextStart !== null && item._place && allToday[idx + 1]._place && item._place !== allToday[idx + 1]._place) {
-            gapHtml = `<div class="gap-hint">Потом переход в ${escapeHtml(allToday[idx + 1]._place)}</div>`;
-          }
+        let lessonNum = '';
+        if (item._type === 'lesson') {
+          lessonNum = allToday.slice(0, idx + 1).filter(x => x._type === 'lesson').length;
         }
-        return `
+        html += `
         <div class="card${cls}">
           <div class="card-header">
             <div>
-              <div class="card-title">${item._type === 'club' ? '🎯 ' : ''}${escapeHtml(item._title)}</div>
+              <div class="card-title">${item._type === 'club' ? '🎯 ' : (lessonNum ? '<span class="lesson-num">' + lessonNum + '.</span> ' : '')}${escapeHtml(item._title)}</div>
               <div class="card-meta">
                 <span class="time-badge">${formatTime(item.start)}${item.end ? ' – ' + formatTime(item.end) : ''}</span>
                 ${item._place ? ' · ' + escapeHtml(item._place) : ''}
@@ -492,9 +489,24 @@
             <div class="card-tags">
               ${item.items.map(i => `<span class="tag">${escapeHtml(i)}</span>`).join('')}
             </div>` : ''}
-          ${gapHtml}
         </div>`;
-      }).join('');
+        // Break / gap to next
+        if (idx < allToday.length - 1) {
+          const nextStart = parseTime(allToday[idx + 1].start);
+          if (end !== null && nextStart !== null) {
+            const gap = nextStart - end;
+            if (gap >= 5) {
+              const isLong = gap >= 20;
+              html += `<div class="break-row ${isLong ? 'break-long' : ''}">
+                <div class="break-line"></div>
+                <div class="break-label">${isLong ? 'Окно' : 'Перемена'} · ${gap} мин${item._place && allToday[idx+1]._place && item._place !== allToday[idx+1]._place ? ' · переход в ' + escapeHtml(allToday[idx+1]._place) : ''}</div>
+                <div class="break-line"></div>
+              </div>`;
+            }
+          }
+        }
+      });
+      list.innerHTML = html;
     }
 
     // Quick pack
@@ -524,6 +536,8 @@
         });
       });
     }
+
+    renderDashDaylog();
   }
 
   function renderDayTimeline(day, allToday, bestMorningBus, bestEveningBus, nowMin) {
@@ -1258,6 +1272,150 @@
 
 
 
+
+  // ----- DAY LOG / DIARY -----
+  const STAYED_LABELS = {
+    home: 'Дома', grandma: 'У бабушки / дедушки', dad: 'У папы', mom: 'У мамы',
+    friend: 'У друга', club: 'На кружке', other: 'Другое'
+  };
+  const MOOD_EMOJI = { 1: '😢', 2: '😐', 3: '🙂', 4: '😊', 5: '🤩' };
+
+  function todayDateStr() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+
+  function getLogForDate(dateStr) {
+    return (state.dayLogs || []).find(l => l.date === dateStr) || null;
+  }
+
+  function renderDashDaylog() {
+    const el = document.getElementById('dash-daylog');
+    if (!el) return;
+    const log = getLogForDate(todayDateStr());
+    if (!log) {
+      el.innerHTML = `<div class="card"><p class="hint" style="margin:0">День ещё не отмечен. <button class="btn btn-secondary btn-sm" data-goto="diary" style="margin-top:8px">Записать итог</button></p></div>`;
+      return;
+    }
+    const stayed = log.stayedAt === 'other' ? (log.stayedOther || 'Другое') : (STAYED_LABELS[log.stayedAt] || '—');
+    el.innerHTML = `<div class="card">
+      <div class="card-title">${MOOD_EMOJI[log.mood] || '·'} ${log.mood ? 'Оценка ' + log.mood + '/5' : 'Без оценки'} · ${escapeHtml(stayed)}</div>
+      ${log.remarks ? `<div class="card-meta" style="margin-top:6px">Замечания: ${escapeHtml(log.remarks)}</div>` : ''}
+      ${log.incidents ? `<div class="card-meta">Ситуации: ${escapeHtml(log.incidents)}</div>` : ''}
+      ${log.notes ? `<div class="card-meta">На заметку: ${escapeHtml(log.notes)}</div>` : ''}
+    </div>`;
+  }
+
+  let diaryMood = 3;
+
+  function renderDiary() {
+    const dateInput = document.getElementById('diary-date');
+    if (!dateInput) return;
+    if (!dateInput.value) dateInput.value = todayDateStr();
+    const dateStr = dateInput.value;
+    const log = getLogForDate(dateStr);
+    diaryMood = log && log.mood ? log.mood : 3;
+    document.querySelectorAll('#diary-mood .mood-btn').forEach(b => {
+      b.classList.toggle('active', +b.dataset.mood === diaryMood);
+    });
+    document.getElementById('diary-stayed').value = log ? (log.stayedAt || '') : '';
+    document.getElementById('diary-stayed-other').value = log ? (log.stayedOther || '') : '';
+    document.getElementById('diary-stayed-other-wrap').classList.toggle('hidden', document.getElementById('diary-stayed').value !== 'other');
+    document.getElementById('diary-remarks').value = log ? (log.remarks || '') : '';
+    document.getElementById('diary-incidents').value = log ? (log.incidents || '') : '';
+    document.getElementById('diary-notes').value = log ? (log.notes || '') : '';
+
+    // Month filter
+    const months = new Set();
+    (state.dayLogs || []).forEach(l => { if (l.date) months.add(l.date.slice(0, 7)); });
+    const curMonth = dateStr.slice(0, 7);
+    months.add(curMonth);
+    const sel = document.getElementById('diary-month');
+    const sorted = [...months].sort().reverse();
+    const prev = sel.value;
+    sel.innerHTML = sorted.map(m => {
+      const [y, mo] = m.split('-');
+      const label = new Date(+y, +mo - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+      return `<option value="${m}">${label}</option>`;
+    }).join('');
+    sel.value = sorted.includes(prev) ? prev : curMonth;
+
+    renderDiaryHistory(sel.value);
+  }
+
+  function renderDiaryHistory(monthKey) {
+    const list = document.getElementById('diary-history');
+    const empty = document.getElementById('diary-history-empty');
+    let logs = (state.dayLogs || []).filter(l => l.date && l.date.startsWith(monthKey));
+    logs.sort((a, b) => b.date.localeCompare(a.date));
+    if (!logs.length) {
+      list.innerHTML = '';
+      empty.classList.remove('hidden');
+      return;
+    }
+    empty.classList.add('hidden');
+    list.innerHTML = logs.map(log => {
+      const d = new Date(log.date + 'T00:00:00');
+      const label = d.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
+      const stayed = log.stayedAt === 'other' ? (log.stayedOther || 'Другое') : (STAYED_LABELS[log.stayedAt] || '—');
+      return `<div class="card" data-log-date="${log.date}">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${MOOD_EMOJI[log.mood] || ''} ${label}</div>
+            <div class="card-meta">${escapeHtml(stayed)}</div>
+          </div>
+          <div class="card-actions">
+            <button class="btn-icon diary-edit" data-date="${log.date}" title="Открыть">✎</button>
+            <button class="btn-icon diary-del" data-id="${log.id}" title="Удалить">×</button>
+          </div>
+        </div>
+        ${log.remarks ? `<div class="card-body" style="font-size:0.85rem">Замечания: ${escapeHtml(log.remarks)}</div>` : ''}
+        ${log.incidents ? `<div class="card-body" style="font-size:0.85rem">Ситуации: ${escapeHtml(log.incidents)}</div>` : ''}
+        ${log.notes ? `<div class="card-body" style="font-size:0.85rem;color:var(--text-secondary)">На заметку: ${escapeHtml(log.notes)}</div>` : ''}
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.diary-edit').forEach(b => b.addEventListener('click', () => {
+      document.getElementById('diary-date').value = b.dataset.date;
+      renderDiary();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }));
+    list.querySelectorAll('.diary-del').forEach(b => b.addEventListener('click', () => {
+      if (!confirm('Удалить запись?')) return;
+      state.dayLogs = state.dayLogs.filter(l => l.id !== b.dataset.id);
+      save();
+      renderDiary();
+      toast('Удалено');
+    }));
+  }
+
+  function saveDiary() {
+    const dateStr = document.getElementById('diary-date').value || todayDateStr();
+    const stayedAt = document.getElementById('diary-stayed').value;
+    const data = {
+      id: (getLogForDate(dateStr) || {}).id || uid(),
+      date: dateStr,
+      mood: diaryMood,
+      stayedAt,
+      stayedOther: document.getElementById('diary-stayed-other').value.trim(),
+      remarks: document.getElementById('diary-remarks').value.trim(),
+      incidents: document.getElementById('diary-incidents').value.trim(),
+      notes: document.getElementById('diary-notes').value.trim()
+    };
+    const idx = (state.dayLogs || []).findIndex(l => l.date === dateStr);
+    if (!state.dayLogs) state.dayLogs = [];
+    if (idx >= 0) state.dayLogs[idx] = data;
+    else state.dayLogs.push(data);
+    // soft limit: keep ~400 entries (~1+ year)
+    if (state.dayLogs.length > 400) {
+      state.dayLogs.sort((a, b) => a.date.localeCompare(b.date));
+      state.dayLogs = state.dayLogs.slice(-400);
+    }
+    save();
+    renderDiary();
+    if (currentTab === 'today') renderDashDaylog();
+    toast('Итог дня сохранён');
+  }
+
   // ----- PEOPLE -----
   function renderPeople() {
     const list = document.getElementById('people-list');
@@ -1618,6 +1776,7 @@
         <label class="pack-item"><input type="checkbox" id="sh-notes" checked> <span class="pack-label">Заметки (без аудио)</span></label>
         <label class="pack-item"><input type="checkbox" id="sh-people" checked> <span class="pack-label">Люди / ДР</span></label>
         <label class="pack-item"><input type="checkbox" id="sh-holidays" checked> <span class="pack-label">Каникулы</span></label>
+        <label class="pack-item"><input type="checkbox" id="sh-daylogs" checked> <span class="pack-label">Дневник</span></label>
       </div>
     `, `
       <button class="btn btn-secondary" id="modal-cancel">Отмена</button>
@@ -1640,6 +1799,7 @@
       }
       if (document.getElementById('sh-people')?.checked) out.people = state.people || [];
       if (document.getElementById('sh-holidays')?.checked) out.holidays = state.holidays || [];
+      if (document.getElementById('sh-daylogs')?.checked) out.dayLogs = state.dayLogs || [];
       return out;
     }
 
@@ -1714,7 +1874,7 @@
       toast('Неверный формат JSON');
       return false;
     }
-    if (!(parsed.lessons || parsed.clubs || parsed.profile || parsed.buses || parsed.notes || parsed.people || parsed.holidays || parsed.packChecks || parsed.settings)) {
+    if (!(parsed.lessons || parsed.clubs || parsed.profile || parsed.buses || parsed.notes || parsed.people || parsed.holidays || parsed.dayLogs || parsed.packChecks || parsed.settings)) {
       toast('JSON не похож на данные планера');
       return false;
     }
@@ -1726,6 +1886,7 @@
       notes: Array.isArray(parsed.notes) ? parsed.notes : state.notes,
       people: Array.isArray(parsed.people) ? parsed.people : (state.people || []),
       holidays: Array.isArray(parsed.holidays) ? parsed.holidays : (state.holidays || []),
+      dayLogs: Array.isArray(parsed.dayLogs) ? parsed.dayLogs : (state.dayLogs || []),
       packChecks: parsed.packChecks && typeof parsed.packChecks === 'object' ? parsed.packChecks : (state.packChecks || {}),
       settings: { ...state.settings, ...(parsed.settings || {}) }
     };
@@ -1893,6 +2054,7 @@
         notes: [],
         people: [],
         holidays: [],
+        dayLogs: [],
         packChecks: {},
         settings: { theme: state.settings.theme, activeDay: null }
       };
@@ -1909,6 +2071,18 @@
   });
   document.getElementById('add-bus-btn').addEventListener('click', () => openBusModal(null));
   document.getElementById('add-note-btn').addEventListener('click', () => openNoteModal(null));
+  document.getElementById('diary-save-btn')?.addEventListener('click', saveDiary);
+  document.getElementById('diary-date')?.addEventListener('change', () => renderDiary());
+  document.getElementById('diary-month')?.addEventListener('change', (e) => renderDiaryHistory(e.target.value));
+  document.getElementById('diary-mood')?.addEventListener('click', (e) => {
+    const b = e.target.closest('.mood-btn');
+    if (!b) return;
+    diaryMood = +b.dataset.mood;
+    document.querySelectorAll('#diary-mood .mood-btn').forEach(x => x.classList.toggle('active', +x.dataset.mood === diaryMood));
+  });
+  document.getElementById('diary-stayed')?.addEventListener('change', (e) => {
+    document.getElementById('diary-stayed-other-wrap')?.classList.toggle('hidden', e.target.value !== 'other');
+  });
   document.getElementById('add-person-btn').addEventListener('click', () => openPersonModal(null));
   document.getElementById('add-holiday-btn').addEventListener('click', () => openHolidayModal(null));
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
