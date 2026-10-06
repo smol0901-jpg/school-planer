@@ -1,11 +1,12 @@
 /* School Planner service worker — versioned cache */
-const VERSION = '2.3.0';
+const VERSION = '2.4.0';
 const CACHE = 'school-planner-' + VERSION;
 const ASSETS = [
   './',
   './index.html',
   './css/styles.css',
   './js/app.js',
+  './js/qrcode.js',
   './manifest.json',
   './version.json',
   './icons/icon-192.png',

@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'school-planner-v1';
   const BACKUP_KEY = 'school-planner-backup-v1';
-  const APP_VERSION = '2.3.0';
+  const APP_VERSION = '2.4.0';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 
@@ -17,7 +17,7 @@
     people: [],       // { id, name, relation, birthday (MM-DD or YYYY-MM-DD), age?, likes, dislikes, notes }
     holidays: [],     // { id, name, start (YYYY-MM-DD), end (YYYY-MM-DD), homework, notes }
     packChecks: {},   // { "itemKey": true }
-    settings: { theme: 'light', activeDay: null }
+    settings: { theme: 'light', activeDay: null, radius: 12, density: 'comfortable', fontSize: 16, shadows: true }
   };
 
   let currentTab = 'today';
@@ -51,7 +51,7 @@
       people: [],
       holidays: [],
       packChecks: {},
-      settings: { theme: 'light', activeDay: null }
+      settings: { theme: 'light', activeDay: null, radius: 12, density: 'comfortable', fontSize: 16, shadows: true }
     };
     const s = { ...base, ...(parsed || {}) };
     s.profile = { ...base.profile, ...(s.profile || {}) };
@@ -140,6 +140,17 @@
   // ---------- Theme ----------
   function applyTheme() {
     document.documentElement.setAttribute('data-theme', state.settings.theme || 'light');
+    applyAppearance();
+  }
+
+  function applyAppearance() {
+    const s = state.settings || {};
+    const r = Number(s.radius) || 12;
+    document.documentElement.style.setProperty('--radius', r + 'px');
+    document.documentElement.style.setProperty('--radius-sm', Math.max(4, r - 4) + 'px');
+    document.documentElement.style.setProperty('--app-font-size', (Number(s.fontSize) || 16) + 'px');
+    document.documentElement.setAttribute('data-density', s.density || 'comfortable');
+    document.documentElement.setAttribute('data-shadows', s.shadows === false ? 'off' : 'on');
   }
 
   function toggleTheme() {
@@ -2109,6 +2120,260 @@
       URL.revokeObjectURL(url);
       toast('Шаблон скачан');
     });
+  });
+
+
+  // ----- Appearance settings form -----
+  function fillSettingsForm() {
+    const s = state.settings || {};
+    const r = document.getElementById('set-radius');
+    const d = document.getElementById('set-density');
+    const f = document.getElementById('set-font');
+    const sh = document.getElementById('set-shadow');
+    if (r) r.value = String(s.radius || 12);
+    if (d) d.value = s.density || 'comfortable';
+    if (f) f.value = String(s.fontSize || 16);
+    if (sh) sh.checked = s.shadows !== false;
+  }
+
+  document.getElementById('settings-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    state.settings.radius = +document.getElementById('set-radius').value;
+    state.settings.density = document.getElementById('set-density').value;
+    state.settings.fontSize = +document.getElementById('set-font').value;
+    state.settings.shadows = document.getElementById('set-shadow').checked;
+    applyAppearance();
+    save();
+    toast('Вид сохранён');
+  });
+
+  // ----- QR data transfer -----
+  let lastQrPayload = '';
+  let qrScanTimer = null;
+  let qrStream = null;
+
+  async function encodePayload(obj) {
+    const json = JSON.stringify(obj);
+    try {
+      if (typeof CompressionStream !== 'undefined') {
+        const stream = new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'));
+        const buf = await new Response(stream).arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let bin = '';
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return 'SP2G|' + btoa(bin);
+      }
+    } catch (_) {}
+    return 'SP2|' + btoa(unescape(encodeURIComponent(json)));
+  }
+
+  async function decodePayload(str) {
+    str = (str || '').trim();
+    // allow URL with ?import=
+    try {
+      if (str.includes('import=')) {
+        const u = new URL(str, location.href);
+        str = u.searchParams.get('import') || str;
+      }
+    } catch (_) {}
+    if (str.startsWith('SP2G|')) {
+      const bin = atob(str.slice(5));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      if (typeof DecompressionStream !== 'undefined') {
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+        const text = await new Response(stream).text();
+        return JSON.parse(text);
+      }
+      throw new Error('Нужен браузер с gzip');
+    }
+    if (str.startsWith('SP2|')) {
+      const json = decodeURIComponent(escape(atob(str.slice(4))));
+      return JSON.parse(json);
+    }
+    // plain JSON fallback
+    if (str.startsWith('{')) return JSON.parse(str);
+    throw new Error('Неизвестный формат QR');
+  }
+
+  async function showDataQr(kind, dataObj, title) {
+    const payload = await encodePayload(dataObj);
+    lastQrPayload = payload;
+    const wrap = document.getElementById('qr-canvas-wrap');
+    const box = document.getElementById('qr-result');
+    const titleEl = document.getElementById('qr-result-title');
+    const hint = document.getElementById('qr-result-hint');
+    if (!wrap || typeof qrcode === 'undefined') {
+      toast('Генератор QR не загрузился');
+      return;
+    }
+    // Pick error correction and type number by size
+    let level = 'M';
+    if (payload.length > 1200) level = 'L';
+    if (payload.length > 2500) {
+      hint.textContent = 'Слишком много данных для одного QR (' + payload.length + ' симв.). Используй экспорт JSON или выбери меньший блок.';
+      box.classList.remove('hidden');
+      titleEl.textContent = title;
+      wrap.innerHTML = '<p class="hint">QR не поместился. Скачай JSON в разделе «Данные».</p>';
+      toast('Данные слишком большие для QR');
+      return;
+    }
+    try {
+      const qr = qrcode(0, level);
+      qr.addData(payload);
+      qr.make();
+      wrap.innerHTML = qr.createSvgTag(4, 6);
+      const svg = wrap.querySelector('svg');
+      if (svg) {
+        svg.style.maxWidth = '280px';
+        svg.style.width = '100%';
+        svg.style.height = 'auto';
+        svg.style.background = '#fff';
+        svg.style.borderRadius = '12px';
+      }
+      titleEl.textContent = title;
+      hint.textContent = 'Попроси друга открыть Профиль → QR-обмен → Считать QR. Размер: ' + payload.length + ' символов.';
+      box.classList.remove('hidden');
+      toast('QR готов');
+    } catch (err) {
+      console.warn(err);
+      toast('Не удалось создать QR — попробуй меньший блок');
+    }
+  }
+
+  document.getElementById('qr-gen-lessons')?.addEventListener('click', () => {
+    showDataQr('lessons', { lessons: state.lessons }, 'QR: уроки (' + state.lessons.length + ')');
+  });
+  document.getElementById('qr-gen-people')?.addEventListener('click', () => {
+    showDataQr('people', { people: state.people || [] }, 'QR: люди (' + (state.people || []).length + ')');
+  });
+  document.getElementById('qr-gen-holidays')?.addEventListener('click', () => {
+    showDataQr('holidays', { holidays: state.holidays || [] }, 'QR: каникулы');
+  });
+  document.getElementById('qr-gen-clubs')?.addEventListener('click', () => {
+    showDataQr('clubs', { clubs: state.clubs || [] }, 'QR: кружки');
+  });
+  document.getElementById('qr-gen-full')?.addEventListener('click', () => {
+    const full = {
+      profile: { ...state.profile, photo: '' }, // photo too heavy for QR
+      lessons: state.lessons,
+      clubs: state.clubs,
+      buses: state.buses,
+      notes: (state.notes || []).map(n => { const { audio, audioMime, ...r } = n; return r; }),
+      people: state.people || [],
+      holidays: state.holidays || [],
+      packChecks: state.packChecks || {},
+      settings: state.settings
+    };
+    showDataQr('full', full, 'QR: вся база (без фото и аудио)');
+  });
+
+  document.getElementById('qr-copy-payload')?.addEventListener('click', async () => {
+    if (!lastQrPayload) return;
+    try {
+      await navigator.clipboard.writeText(lastQrPayload);
+      toast('Скопировано');
+    } catch {
+      toast('Не удалось скопировать');
+    }
+  });
+
+  async function importFromPayloadString(str) {
+    try {
+      const data = await decodePayload(str);
+      if (applyImportedData(data)) {
+        toast('Данные из QR импортированы');
+        stopQrScan();
+      }
+    } catch (err) {
+      console.warn(err);
+      toast('Не удалось прочитать данные: ' + (err.message || 'ошибка'));
+    }
+  }
+
+  document.getElementById('qr-import-paste')?.addEventListener('click', () => {
+    const t = document.getElementById('qr-paste')?.value || '';
+    if (!t.trim()) { toast('Вставь текст'); return; }
+    importFromPayloadString(t);
+  });
+
+  function stopQrScan() {
+    if (qrScanTimer) { clearInterval(qrScanTimer); qrScanTimer = null; }
+    if (qrStream) { qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
+    const v = document.getElementById('qr-video');
+    if (v) { v.classList.add('hidden'); v.srcObject = null; }
+    document.getElementById('qr-scan-stop')?.classList.add('hidden');
+  }
+
+  document.getElementById('qr-scan-stop')?.addEventListener('click', stopQrScan);
+
+  document.getElementById('qr-scan-btn')?.addEventListener('click', async () => {
+    stopQrScan();
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast('Камера недоступна — вставь текст QR вручную');
+      return;
+    }
+    try {
+      qrStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'environment' } });
+      const video = document.getElementById('qr-video');
+      video.srcObject = qrStream;
+      video.classList.remove('hidden');
+      document.getElementById('qr-scan-stop').classList.remove('hidden');
+      await video.play();
+
+      // Prefer BarcodeDetector
+      if ('BarcodeDetector' in window) {
+        const detector = new BarcodeDetector({ formats: ['qr_code'] });
+        qrScanTimer = setInterval(async () => {
+          try {
+            const codes = await detector.detect(video);
+            if (codes && codes[0] && codes[0].rawValue) {
+              stopQrScan();
+              importFromPayloadString(codes[0].rawValue);
+            }
+          } catch (_) {}
+        }, 500);
+        toast('Наведи камеру на QR');
+      } else {
+        toast('Автоскан недоступен в этом браузере. Сфоткай QR другим приложением и вставь текст, либо выбери «Фото QR».');
+      }
+    } catch (err) {
+      toast('Нет доступа к камере');
+    }
+  });
+
+  document.getElementById('qr-scan-file')?.addEventListener('click', () => {
+    document.getElementById('qr-file-input')?.click();
+  });
+
+  document.getElementById('qr-file-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!('BarcodeDetector' in window)) {
+      toast('Распознавание с фото не поддерживается — используй камеру Chrome или вставку текста');
+      return;
+    }
+    try {
+      const bmp = await createImageBitmap(file);
+      const detector = new BarcodeDetector({ formats: ['qr_code'] });
+      const codes = await detector.detect(bmp);
+      if (codes && codes[0] && codes[0].rawValue) {
+        importFromPayloadString(codes[0].rawValue);
+      } else {
+        toast('QR на фото не найден');
+      }
+    } catch (err) {
+      toast('Не удалось разобрать фото');
+    }
+  });
+
+  // When switching to settings tab — fill form
+  const _ptabHandler = document.getElementById('profile-tabs');
+  // augment existing click via capture
+  document.getElementById('profile-tabs')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if (btn && btn.dataset.ptab === 'settings') fillSettingsForm();
   });
 
   // ---------- Init ----------

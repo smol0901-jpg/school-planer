@@ -183,6 +183,8 @@
           <button class="seg-btn" data-ptab="people">Люди</button>
           <button class="seg-btn" data-ptab="holidays">Каникулы</button>
           <button class="seg-btn" data-ptab="data">Данные</button>
+          <button class="seg-btn" data-ptab="qr">QR-обмен</button>
+          <button class="seg-btn" data-ptab="settings">Вид</button>
           <button class="seg-btn" data-ptab="templates">Шаблоны</button>
           <button class="seg-btn" data-ptab="about">О приложении</button>
         </div>
@@ -252,6 +254,72 @@
           </div>
         </div>
 
+        <div class="ptab" id="ptab-qr">
+          <p class="hint"><strong>Обмен через QR</strong> — удобно передать уроки однокласснику или всю базу родственнику. Каникулы и дни рождения тоже по отдельности.</p>
+          <p class="hint">Сформируй QR → другой человек в своём планере: QR-обмен → «Считать QR» или вставит текст.</p>
+          <div class="data-actions" style="margin-top:12px">
+            <button class="btn btn-secondary" id="qr-gen-lessons">QR: только уроки</button>
+            <button class="btn btn-secondary" id="qr-gen-people">QR: люди и ДР</button>
+            <button class="btn btn-secondary" id="qr-gen-holidays">QR: каникулы</button>
+            <button class="btn btn-secondary" id="qr-gen-clubs">QR: кружки</button>
+            <button class="btn btn-primary" id="qr-gen-full">QR: вся база</button>
+          </div>
+          <div id="qr-result" class="about-card hidden" style="margin-top:14px;text-align:center">
+            <div class="about-name" id="qr-result-title">QR</div>
+            <div id="qr-canvas-wrap"></div>
+            <p class="hint" id="qr-result-hint"></p>
+            <button class="btn btn-secondary btn-sm" id="qr-copy-payload" style="margin-top:8px">Копировать данные</button>
+          </div>
+          <div class="divider"></div>
+          <h3>Считать QR / вставить</h3>
+          <div class="data-actions">
+            <button class="btn btn-primary" id="qr-scan-btn">Сканировать камерой</button>
+            <button class="btn btn-secondary" id="qr-scan-file">Фото QR с галереи</button>
+            <input type="file" id="qr-file-input" accept="image/*" hidden>
+            <label>Или вставь текст из QR
+              <textarea id="qr-paste" class="input textarea" rows="3" placeholder="SP2|..."></textarea>
+            </label>
+            <button class="btn btn-secondary" id="qr-import-paste">Импортировать вставку</button>
+          </div>
+          <video id="qr-video" class="hidden" playsinline style="width:100%;border-radius:12px;margin-top:10px;background:#000"></video>
+          <canvas id="qr-scan-canvas" class="hidden"></canvas>
+          <button class="btn btn-danger btn-sm hidden" id="qr-scan-stop" style="margin-top:8px">Остановить камеру</button>
+        </div>
+
+        <div class="ptab" id="ptab-settings">
+          <p class="hint">Внешний вид. Настройки сохраняются на этом устройстве.</p>
+          <form class="form" id="settings-form">
+            <label>Скругление углов
+              <select id="set-radius" class="select">
+                <option value="6">Острые</option>
+                <option value="10">Слегка</option>
+                <option value="12">Обычные</option>
+                <option value="16">Мягкие</option>
+                <option value="22">Очень мягкие</option>
+              </select>
+            </label>
+            <label>Плотность списка
+              <select id="set-density" class="select">
+                <option value="comfortable">Комфортная</option>
+                <option value="compact">Компактная</option>
+              </select>
+            </label>
+            <label>Размер шрифта
+              <select id="set-font" class="select">
+                <option value="15">Меньше</option>
+                <option value="16">Обычный</option>
+                <option value="17">Крупнее</option>
+                <option value="18">Крупный</option>
+              </select>
+            </label>
+            <label class="pack-item" style="margin-top:8px">
+              <input type="checkbox" id="set-shadow">
+              <span class="pack-label">Тени у карточек</span>
+            </label>
+            <button type="submit" class="btn btn-primary">Сохранить вид</button>
+          </form>
+        </div>
+
         <div class="ptab" id="ptab-templates">
           <p class="hint"><strong>Как пользоваться шаблонами</strong></p>
           <ol class="instruct-list">
@@ -318,6 +386,7 @@
     <div id="toast" class="toast hidden"></div>
   </div>
 
+  <script src="js/qrcode.js"></script>
   <script src="js/app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {

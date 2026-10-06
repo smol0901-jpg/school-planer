@@ -1192,3 +1192,25 @@ button.tool-card {
   cursor: pointer;
   font: inherit;
 }
+
+html {
+  font-size: var(--app-font-size, 16px);
+}
+[data-shadows="off"] .card,
+[data-shadows="off"] .tool-card,
+[data-shadows="off"] .about-card {
+  box-shadow: none;
+}
+[data-density="compact"] .card {
+  padding: 10px;
+  margin-bottom: 6px;
+}
+[data-density="compact"] .pack-item {
+  padding: 8px 10px;
+}
+[data-density="compact"] .hero-title {
+  font-size: 1.1rem;
+}
+#qr-canvas-wrap svg {
+  display: inline-block;
+}
