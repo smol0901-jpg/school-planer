@@ -177,104 +177,129 @@
         <div class="section-header">
           <h2>Профиль</h2>
         </div>
-        <div class="profile-card" id="profile-card">
-          <div class="profile-avatar" id="profile-avatar">?</div>
-          <div class="profile-info">
-            <h3 id="profile-name">Имя не указано</h3>
-            <p id="profile-class"></p>
-            <p id="profile-school"></p>
+
+        <div class="segmented profile-tabs" id="profile-tabs">
+          <button class="seg-btn active" data-ptab="me">Я</button>
+          <button class="seg-btn" data-ptab="people">Люди</button>
+          <button class="seg-btn" data-ptab="holidays">Каникулы</button>
+          <button class="seg-btn" data-ptab="data">Данные</button>
+          <button class="seg-btn" data-ptab="templates">Шаблоны</button>
+          <button class="seg-btn" data-ptab="about">О приложении</button>
+        </div>
+
+        <div class="ptab active" id="ptab-me">
+          <div class="profile-card" id="profile-card">
+            <div class="profile-avatar-wrap">
+              <div class="profile-avatar" id="profile-avatar">?</div>
+              <label class="avatar-upload-btn" title="Фото">
+                📷
+                <input type="file" id="pf-photo" accept="image/*" hidden>
+              </label>
+            </div>
+            <div class="profile-info">
+              <h3 id="profile-name">Имя не указано</h3>
+              <p id="profile-class"></p>
+              <p id="profile-school"></p>
+            </div>
+          </div>
+          <form id="profile-form" class="form">
+            <label>Имя
+              <input type="text" id="pf-name" class="input" placeholder="Как тебя зовут">
+            </label>
+            <label>Класс
+              <input type="text" id="pf-class" class="input" placeholder="Например, 9А">
+            </label>
+            <label>Школа
+              <input type="text" id="pf-school" class="input" placeholder="Название школы">
+            </label>
+            <label>Дополнительно
+              <textarea id="pf-notes" class="input textarea" rows="3" placeholder="Любая информация о себе"></textarea>
+            </label>
+            <button type="submit" class="btn btn-primary">Сохранить профиль</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="pf-photo-remove" style="margin-top:8px">Убрать фото</button>
+          </form>
+        </div>
+
+        <div class="ptab" id="ptab-people">
+          <p class="hint">Друзья, одноклассники, родственники — чтобы не забыть поздравить.</p>
+          <div id="people-list" class="cards-list"></div>
+          <button class="btn btn-secondary btn-sm" id="add-person-btn" style="margin-top:8px">+ Человек</button>
+        </div>
+
+        <div class="ptab" id="ptab-holidays">
+          <p class="hint">Когда начинаются и заканчиваются, какие задания на каникулы.</p>
+          <div id="holidays-list" class="cards-list"></div>
+          <button class="btn btn-secondary btn-sm" id="add-holiday-btn" style="margin-top:8px">+ Каникулы</button>
+        </div>
+
+        <div class="ptab" id="ptab-data">
+          <p class="hint">Все данные хранятся только на этом устройстве. Без интернета приложение работает полностью.</p>
+          <div class="data-actions">
+            <button class="btn btn-secondary" id="export-json">Экспорт JSON</button>
+            <button class="btn btn-secondary" id="share-data">Поделиться / выборочно</button>
+            <button class="btn btn-secondary" id="import-json">Импорт JSON</button>
+            <input type="file" id="import-file" accept=".json,application/json" hidden>
+            <button class="btn btn-secondary" id="generate-prompt">Промпт для нейросети</button>
+            <button class="btn btn-secondary" id="load-demo">Загрузить пример</button>
+            <button class="btn btn-primary" id="check-update">Обновить приложение</button>
+            <p class="hint" id="app-version-label" style="margin-top:4px"></p>
+            <button class="btn btn-danger" id="clear-data">Очистить всё</button>
+          </div>
+          <div id="prompt-box" class="prompt-box hidden">
+            <p>Скопируй этот промпт, вставь в нейросеть, получи JSON и импортируй:</p>
+            <textarea id="ai-prompt" class="input textarea" rows="8" readonly></textarea>
+            <button class="btn btn-primary btn-sm" id="copy-prompt">Копировать</button>
           </div>
         </div>
-        <form id="profile-form" class="form">
-          <label>Имя
-            <input type="text" id="pf-name" class="input" placeholder="Как тебя зовут">
-          </label>
-          <label>Класс
-            <input type="text" id="pf-class" class="input" placeholder="Например, 9А">
-          </label>
-          <label>Школа
-            <input type="text" id="pf-school" class="input" placeholder="Название школы">
-          </label>
-          <label>Дополнительно
-            <textarea id="pf-notes" class="input textarea" rows="3" placeholder="Любая информация о себе"></textarea>
-          </label>
-          <button type="submit" class="btn btn-primary">Сохранить профиль</button>
-        </form>
 
-        <div class="divider"></div>
-
-        <h3>Люди и дни рождения</h3>
-        <p class="hint">Друзья, одноклассники, родственники — чтобы не забыть поздравить.</p>
-        <div id="people-list" class="cards-list"></div>
-        <button class="btn btn-secondary btn-sm" id="add-person-btn" style="margin-top:8px">+ Человек</button>
-
-        <div class="divider"></div>
-
-        <h3>Каникулы</h3>
-        <p class="hint">Когда начинаются и заканчиваются, какие задания на каникулы.</p>
-        <div id="holidays-list" class="cards-list"></div>
-        <button class="btn btn-secondary btn-sm" id="add-holiday-btn" style="margin-top:8px">+ Каникулы</button>
-
-        <div class="divider"></div>
-
-        <h3>Данные</h3>
-        <p class="hint">Все данные хранятся только на этом устройстве. Никуда не отправляются. Без интернета приложение работает полностью.</p>
-        <div class="data-actions">
-          <button class="btn btn-secondary" id="export-json">Экспорт JSON</button>
-          <button class="btn btn-secondary" id="share-data">Поделиться / выборочно</button>
-          <button class="btn btn-secondary" id="import-json">Импорт JSON</button>
-          <input type="file" id="import-file" accept=".json,application/json" hidden>
-          <button class="btn btn-secondary" id="generate-prompt">Промпт для нейросети</button>
-          <button class="btn btn-secondary" id="load-demo">Загрузить пример</button>
-          <button class="btn btn-primary" id="check-update">Обновить приложение</button>
-          <p class="hint" id="app-version-label" style="margin-top:4px"></p>
-          <button class="btn btn-danger" id="clear-data">Очистить всё</button>
-        </div>
-
-        <div class="divider"></div>
-
-        <h3>Об авторе</h3>
-        <div class="about-card">
-          <div class="about-name">Смолянинов Александр Вячеславович</div>
-          <div class="about-label">Лейбл: NEURAL_ARCHITECT_PREMIUM++</div>
-          <p class="hint" style="margin-top:8px">Приложение «Школьный планер» — отдельный продукт. Работает офлайн на вашем устройстве.</p>
-          <div class="about-contacts">
-            <a class="contact-chip" href="https://t.me/ASV_PROD" target="_blank" rel="noopener">Telegram ASV_PROD</a>
-            <a class="contact-chip" href="https://dzen.ru/ASV_PROD" target="_blank" rel="noopener">Дзен ASV_PROD</a>
-            <a class="contact-chip" href="https://vk.com/smolyaninovchef" target="_blank" rel="noopener">VK smolyAninovchef</a>
+        <div class="ptab" id="ptab-templates">
+          <p class="hint"><strong>Как пользоваться шаблонами</strong></p>
+          <ol class="instruct-list">
+            <li>Скачай нужный шаблон (JSON-файл).</li>
+            <li>Открой в блокноте или отдай нейросети: «Заполни этот шаблон моими данными».</li>
+            <li>Подставь свои значения и сохрани.</li>
+            <li>Профиль → Данные → <strong>Импорт JSON</strong> → файл или вставка текста.</li>
+            <li>Можно заливать по одному блоку — остальное не сотрётся.</li>
+          </ol>
+          <div class="tools-list" style="margin-top:14px">
+            <button type="button" class="tool-card tpl-btn" data-tpl="full"><div class="tool-title">Полный шаблон</div><div class="tool-meta">Все блоки сразу</div></button>
+            <button type="button" class="tool-card tpl-btn" data-tpl="lessons"><div class="tool-title">Только уроки</div><div class="tool-meta">Расписание по дням</div></button>
+            <button type="button" class="tool-card tpl-btn" data-tpl="clubs"><div class="tool-title">Только кружки</div><div class="tool-meta">Доп. занятия</div></button>
+            <button type="button" class="tool-card tpl-btn" data-tpl="buses"><div class="tool-title">Только автобусы</div><div class="tool-meta">Школа / Дом</div></button>
+            <button type="button" class="tool-card tpl-btn" data-tpl="people"><div class="tool-title">Только люди и ДР</div><div class="tool-meta">Одноклассники, родственники</div></button>
+            <button type="button" class="tool-card tpl-btn" data-tpl="holidays"><div class="tool-title">Только каникулы</div><div class="tool-meta">Даты и задания</div></button>
+            <button type="button" class="tool-card tpl-btn" data-tpl="notes"><div class="tool-title">Только заметки</div><div class="tool-meta">Без аудио</div></button>
           </div>
-          <button class="btn btn-secondary btn-sm" id="feedback-btn" style="margin-top:12px;width:100%">Обратная связь</button>
+          <div class="about-card" style="margin-top:16px">
+            <div class="about-name">QR-код приложения</div>
+            <p class="hint">Отсканируй камерой — откроется страница планера.</p>
+            <img src="icons/qr-app.png" alt="QR код Школьный планер" class="qr-img" width="200" height="200">
+            <p class="hint" style="word-break:break-all">https://smol0901-jpg.github.io/school-planer/</p>
+          </div>
         </div>
 
-        <div class="divider"></div>
-
-        <h3>Другие инструменты автора</h3>
-        <p class="hint">Откроются в браузере (нужен интернет). Планер при этом продолжает работать офлайн.</p>
-        <div class="tools-list">
-          <a class="tool-card" href="https://smol0901-jpg.github.io/Cifra/" target="_blank" rel="noopener">
-            <div class="tool-title">Cifra</div>
-            <div class="tool-meta">smol0901-jpg.github.io/Cifra</div>
-          </a>
-          <a class="tool-card" href="https://smol0901-jpg.github.io/Flowforge-2-3/" target="_blank" rel="noopener">
-            <div class="tool-title">Flowforge 2.3</div>
-            <div class="tool-meta">Автоматизация и потоки</div>
-          </a>
-          <a class="tool-card" href="https://smol0901-jpg.github.io/haccp-studio-v8/" target="_blank" rel="noopener">
-            <div class="tool-title">HACCP Studio v8</div>
-            <div class="tool-meta">Электронные журналы ХАССП</div>
-          </a>
-          <a class="tool-card" href="https://lenpitspb.netlify.app/" target="_blank" rel="noopener">
-            <div class="tool-title">LenPit SPB</div>
-            <div class="tool-meta">lenpitspb.netlify.app</div>
-          </a>
-        </div>
-
-        <div id="prompt-box" class="prompt-box hidden">
-          <p>Скопируй этот промпт, вставь в нейросеть (ChatGPT, Claude, Grok и т.д.), получи JSON и импортируй обратно:</p>
-          <textarea id="ai-prompt" class="input textarea" rows="8" readonly></textarea>
-          <button class="btn btn-primary btn-sm" id="copy-prompt">Копировать</button>
+        <div class="ptab" id="ptab-about">
+          <div class="about-card">
+            <div class="about-name">Смолянинов Александр Вячеславович</div>
+            <div class="about-label">Лейбл: NEURAL_ARCHITECT_PREMIUM++</div>
+            <p class="hint" style="margin-top:8px">Приложение «Школьный планер» — отдельный продукт. Работает офлайн.</p>
+            <div class="about-contacts">
+              <a class="contact-chip" href="https://t.me/ASV_PROD" target="_blank" rel="noopener">Telegram ASV_PROD</a>
+              <a class="contact-chip" href="https://dzen.ru/ASV_PROD" target="_blank" rel="noopener">Дзен ASV_PROD</a>
+              <a class="contact-chip" href="https://vk.com/smolyaninovchef" target="_blank" rel="noopener">VK smolyAninovchef</a>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="feedback-btn" style="margin-top:12px;width:100%">Обратная связь</button>
+          </div>
+          <h3 style="margin:16px 0 8px">Другие инструменты автора</h3>
+          <div class="tools-list">
+            <a class="tool-card" href="https://smol0901-jpg.github.io/Cifra/" target="_blank" rel="noopener"><div class="tool-title">Cifra</div><div class="tool-meta">github.io/Cifra</div></a>
+            <a class="tool-card" href="https://smol0901-jpg.github.io/Flowforge-2-3/" target="_blank" rel="noopener"><div class="tool-title">Flowforge 2.3</div><div class="tool-meta">Автоматизация</div></a>
+            <a class="tool-card" href="https://smol0901-jpg.github.io/haccp-studio-v8/" target="_blank" rel="noopener"><div class="tool-title">HACCP Studio v8</div><div class="tool-meta">Журналы ХАССП</div></a>
+            <a class="tool-card" href="https://lenpitspb.netlify.app/" target="_blank" rel="noopener"><div class="tool-title">LenPit SPB</div><div class="tool-meta">lenpitspb.netlify.app</div></a>
+          </div>
         </div>
       </section>
+
     </main>
 
     <!-- Modals -->

@@ -3,13 +3,13 @@
 
   const STORAGE_KEY = 'school-planner-v1';
   const BACKUP_KEY = 'school-planner-backup-v1';
-  const APP_VERSION = '2.2.0';
+  const APP_VERSION = '2.3.0';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 
   // ---------- State ----------
   let state = {
-    profile: { name: '', className: '', school: '', notes: '' },
+    profile: { name: '', className: '', school: '', notes: '', photo: '' },
     lessons: [],      // { id, day (0-6), subject, start, end, room, teacher, items: [] }
     clubs: [],        // { id, day (0-6), name, start, end, place, teacher, items: [], notes }
     buses: [],        // { id, number, time, destination, walkMin, notes }
@@ -43,7 +43,7 @@
 
   function migrateState(parsed) {
     const base = {
-      profile: { name: '', className: '', school: '', notes: '' },
+      profile: { name: '', className: '', school: '', notes: '', photo: '' },
       lessons: [],
       clubs: [],
       buses: [],
@@ -1213,7 +1213,15 @@
     document.getElementById('profile-class').textContent = p.className ? `Класс: ${p.className}` : '';
     document.getElementById('profile-school').textContent = p.school || '';
     const av = document.getElementById('profile-avatar');
-    av.textContent = p.name ? p.name.trim().charAt(0).toUpperCase() : '?';
+    if (p.photo) {
+      av.style.backgroundImage = 'url(' + p.photo + ')';
+      av.style.backgroundSize = 'cover';
+      av.style.backgroundPosition = 'center';
+      av.textContent = '';
+    } else {
+      av.style.backgroundImage = '';
+      av.textContent = p.name ? p.name.trim().charAt(0).toUpperCase() : '?';
+    }
 
     document.getElementById('pf-name').value = p.name || '';
     document.getElementById('pf-class').value = p.className || '';
@@ -1867,7 +1875,7 @@
   document.getElementById('clear-data').addEventListener('click', () => {
     if (confirm('Удалить ВСЕ данные? Это нельзя отменить.')) {
       state = {
-        profile: { name: '', className: '', school: '', notes: '' },
+        profile: { name: '', className: '', school: '', notes: '', photo: '' },
         lessons: [],
         clubs: [],
         buses: [],
@@ -2011,6 +2019,97 @@
     const label = document.getElementById('app-version-label');
     if (label) label.textContent = 'Версия: ' + APP_VERSION;
   }
+
+
+  // Profile sub-tabs
+  let profileTab = 'me';
+  document.getElementById('profile-tabs')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if (!btn) return;
+    profileTab = btn.dataset.ptab;
+    document.querySelectorAll('#profile-tabs .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.ptab === profileTab));
+    document.querySelectorAll('.ptab').forEach(t => t.classList.toggle('active', t.id === 'ptab-' + profileTab));
+    if (profileTab === 'people') renderPeople();
+    if (profileTab === 'holidays') renderHolidays();
+  });
+
+  // Profile photo
+  document.getElementById('pf-photo')?.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (file.size > 1.5 * 1024 * 1024) {
+      toast('Фото слишком большое (макс ~1.5 МБ)');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      // compress via canvas
+      const img = new Image();
+      img.onload = () => {
+        const max = 256;
+        let w = img.width, h = img.height;
+        if (w > h && w > max) { h = h * max / w; w = max; }
+        else if (h > max) { w = w * max / h; h = max; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        state.profile.photo = canvas.toDataURL('image/jpeg', 0.85);
+        save();
+        renderProfile();
+        toast('Фото сохранено');
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  });
+  document.getElementById('pf-photo-remove')?.addEventListener('click', () => {
+    state.profile.photo = '';
+    save();
+    renderProfile();
+    toast('Фото убрано');
+  });
+
+  // Templates download
+  const TEMPLATES = {
+    full: {
+      profile: { name: '', className: '', school: '', notes: '', photo: '' },
+      lessons: [{ id: 'l1', day: 0, subject: 'Математика', start: '08:30', end: '09:15', room: '305', teacher: '', items: ['тетрадь', 'учебник'] }],
+      clubs: [{ id: 'c1', day: 1, name: 'Робототехника', start: '15:00', end: '16:30', place: 'каб. 12', teacher: '', items: [], notes: '' }],
+      buses: [
+        { id: 'b1', number: '42', time: '07:40', destination: 'Школа', walkMin: 7, notes: '' },
+        { id: 'b2', number: '15', time: '15:20', destination: 'Дом', walkMin: 5, notes: '' }
+      ],
+      notes: [{ id: 'n1', title: 'Пример', body: 'Текст заметки', created: 1710000000000, updated: 1710000000000 }],
+      people: [{ id: 'p1', name: 'Маша', relation: 'одноклассница', birthday: '2012-05-14', age: 14, likes: '', dislikes: '', notes: '' }],
+      holidays: [{ id: 'h1', name: 'Осенние каникулы', start: '2026-10-26', end: '2026-11-02', homework: '', notes: '' }],
+      packChecks: {},
+      settings: { theme: 'light' }
+    },
+    lessons: { lessons: [{ id: 'l1', day: 0, subject: 'Математика', start: '08:30', end: '09:15', room: '305', teacher: '', items: ['тетрадь'] }] },
+    clubs: { clubs: [{ id: 'c1', day: 1, name: 'Кружок', start: '15:00', end: '16:30', place: '', teacher: '', items: [], notes: '' }] },
+    buses: { buses: [{ id: 'b1', number: '42', time: '07:40', destination: 'Школа', walkMin: 7, notes: '' }] },
+    people: { people: [{ id: 'p1', name: 'Имя', relation: 'друг', birthday: '2012-01-15', age: 14, likes: '', dislikes: '', notes: '' }] },
+    holidays: { holidays: [{ id: 'h1', name: 'Каникулы', start: '2026-10-26', end: '2026-11-02', homework: 'Задания…', notes: '' }] },
+    notes: { notes: [{ id: 'n1', title: 'Заметка', body: 'Текст', created: 1710000000000, updated: 1710000000000 }] }
+  };
+
+  document.querySelectorAll('.tpl-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.tpl;
+      const data = TEMPLATES[key];
+      if (!data) return;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'school-planner-template-' + key + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      toast('Шаблон скачан');
+    });
+  });
 
   // ---------- Init ----------
   load();

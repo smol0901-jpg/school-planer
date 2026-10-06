@@ -1,5 +1,5 @@
 /* School Planner service worker — versioned cache */
-const VERSION = '2.2.0';
+const VERSION = '2.3.0';
 const CACHE = 'school-planner-' + VERSION;
 const ASSETS = [
   './',
@@ -9,7 +9,8 @@ const ASSETS = [
   './manifest.json',
   './version.json',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './icons/qr-app.png'
 ];
 
 self.addEventListener('install', (e) => {
