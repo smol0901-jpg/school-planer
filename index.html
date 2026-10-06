@@ -77,12 +77,16 @@
       <section id="tab-schedule" class="tab">
         <div class="section-header">
           <h2>Расписание</h2>
-          <button class="btn btn-primary btn-sm" id="add-lesson-btn">+ Урок</button>
+          <button class="btn btn-primary btn-sm" id="add-schedule-btn">+ Добавить</button>
+        </div>
+        <div class="segmented" id="schedule-type">
+          <button class="seg-btn active" data-type="lessons">Уроки</button>
+          <button class="seg-btn" data-type="clubs">Кружки</button>
         </div>
         <div class="day-tabs" id="day-tabs"></div>
         <div id="schedule-list" class="cards-list"></div>
         <div id="schedule-empty" class="empty-state hidden">
-          <p>Уроков нет. Добавьте первый урок.</p>
+          <p>Пока пусто. Добавьте первый пункт.</p>
         </div>
       </section>
 
@@ -118,7 +122,15 @@
       <section id="tab-notes" class="tab">
         <div class="section-header">
           <h2>Заметки</h2>
-          <button class="btn btn-primary btn-sm" id="add-note-btn">+ Заметка</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary btn-sm" id="record-voice-btn" title="Голосовая заметка">🎤</button>
+            <button class="btn btn-primary btn-sm" id="add-note-btn">+ Заметка</button>
+          </div>
+        </div>
+        <div id="voice-rec-status" class="voice-status hidden">
+          <span class="rec-dot"></span>
+          <span id="voice-rec-timer">00:00</span>
+          <button class="btn btn-danger btn-sm" id="stop-voice-btn">Стоп</button>
         </div>
         <input type="search" id="notes-search" class="input search" placeholder="Поиск...">
         <div id="notes-list" class="cards-list"></div>
@@ -162,9 +174,11 @@
         <p class="hint">Все данные хранятся только на этом устройстве. Никуда не отправляются.</p>
         <div class="data-actions">
           <button class="btn btn-secondary" id="export-json">Экспорт JSON</button>
+          <button class="btn btn-secondary" id="share-data">Поделиться / выборочно</button>
           <button class="btn btn-secondary" id="import-json">Импорт JSON</button>
           <input type="file" id="import-file" accept=".json,application/json" hidden>
           <button class="btn btn-secondary" id="generate-prompt">Промпт для нейросети</button>
+          <button class="btn btn-secondary" id="load-demo">Загрузить пример</button>
           <button class="btn btn-danger" id="clear-data">Очистить всё</button>
         </div>
         <div id="prompt-box" class="prompt-box hidden">
