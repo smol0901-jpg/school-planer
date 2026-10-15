@@ -1,11 +1,11 @@
 {
-  "name": "Школьный планер",
-  "short_name": "Планер",
-  "description": "Расписание, что взять, автобусы и заметки. Работает офлайн, данные только на устройстве.",
+  "name": "Орбита — Школьный планер",
+  "short_name": "Орбита",
+  "description": "Умный школьный планер: расписание, агент, графики, JSON, офлайн.",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "background_color": "#0b0f1a",
+  "theme_color": "#0b0f1a",
   "orientation": "portrait-primary",
   "lang": "ru",
   "icons": [

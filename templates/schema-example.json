@@ -1,0 +1,121 @@
+{
+  "$schema": "https://orbit-planner.local/schema/v3",
+  "version": "3.0.0",
+  "exportedAt": "2026-10-14T12:00:00.000Z",
+  "profile": {
+    "name": "Алексей",
+    "className": "8Б",
+    "school": "Лицей №1",
+    "notes": "Люблю физику и робототехнику",
+    "photo": ""
+  },
+  "lessons": [
+    {
+      "id": "les_mon_1",
+      "day": 0,
+      "subject": "Математика",
+      "start": "08:30",
+      "end": "09:15",
+      "room": "301",
+      "teacher": "Иванова А.П.",
+      "items": ["учебник", "тетрадь", "калькулятор"],
+      "color": "#6366f1"
+    },
+    {
+      "id": "les_mon_2",
+      "day": 0,
+      "subject": "Русский язык",
+      "start": "09:25",
+      "end": "10:10",
+      "room": "215",
+      "teacher": "Петрова М.С.",
+      "items": ["учебник", "тетрадь", "словарь"],
+      "color": "#ec4899"
+    },
+    {
+      "id": "les_mon_3",
+      "day": 0,
+      "subject": "Физика",
+      "start": "10:30",
+      "end": "11:15",
+      "room": "405",
+      "teacher": "Сидоров В.И.",
+      "items": ["учебник", "тетрадь", "рабочая тетрадь"],
+      "color": "#06b6d4"
+    }
+  ],
+  "clubs": [
+    {
+      "id": "club_wed_1",
+      "day": 2,
+      "name": "Робототехника",
+      "start": "15:00",
+      "end": "16:30",
+      "place": "Каб. 112",
+      "teacher": "Козлов Д.А.",
+      "items": ["ноутбук", "блокнот"],
+      "notes": "Приносить зарядку",
+      "color": "#f59e0b"
+    }
+  ],
+  "buses": [
+    {
+      "id": "bus_morning",
+      "number": "42",
+      "time": "07:40",
+      "destination": "Школа",
+      "walkMin": 7,
+      "notes": "Остановка у парка"
+    },
+    {
+      "id": "bus_evening",
+      "number": "42",
+      "time": "16:50",
+      "destination": "Дом",
+      "walkMin": 5,
+      "notes": ""
+    }
+  ],
+  "notes": [
+    {
+      "id": "note_1",
+      "title": "Домашка по математике",
+      "body": "§12 упр. 3–7, 10",
+      "created": 1728800000000,
+      "updated": 1728800000000,
+      "pinned": true
+    }
+  ],
+  "homework": [
+    {
+      "id": "hw_1",
+      "subject": "Математика",
+      "title": "§12 упр. 3–7",
+      "due": "2026-10-15",
+      "done": false,
+      "priority": "high"
+    }
+  ],
+  "goals": [
+    {
+      "id": "goal_1",
+      "title": "Сдать проект по робототехнике",
+      "deadline": "2026-10-25",
+      "progress": 40,
+      "notes": "Осталось собрать корпус"
+    }
+  ],
+  "people": [],
+  "holidays": [],
+  "dayLogs": [],
+  "packChecks": {},
+  "settings": {
+    "theme": "dark",
+    "activeDay": null,
+    "radius": 14,
+    "density": "comfortable",
+    "fontSize": 16,
+    "shadows": true,
+    "accent": "violet"
+  }
+}

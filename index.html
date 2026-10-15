@@ -1,121 +1,79 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#0f172a">
-  <meta name="description" content="Школьный планер — расписание, кружки, автобусы, каникулы, дни рождения. Полностью офлайн.">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Школьный планер</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="icons/icon-192.png" type="image/png">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="css/styles.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <meta name="theme-color" content="#0b0f1a" />
+  <meta name="description" content="Орбита — умный школьный планер. Расписание, QR-обмен, агент, графики, офлайн." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Орбита — Школьный планер</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
-  <div id="app">
-    <!-- Header -->
-    <header class="header">
-      <div class="header-inner">
-        <h1 class="logo">Школьный планер</h1>
-        <button id="theme-toggle" class="icon-btn" aria-label="Сменить тему" title="Тема">
-          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  <div class="app">
+    <header class="app-header">
+      <div class="logo">
+        <div class="logo-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          </svg>
+        </div>
+        <span>Орбита</span>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="btn-theme" title="Тема">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+        <button class="icon-btn" id="btn-agent-quick" title="Агент">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+            <path d="M16 14c0-2.2-1.8-4-4-4s-4 1.8-4 4"/>
+            <path d="M8 18h8M9 21h6"/>
+          </svg>
         </button>
       </div>
     </header>
 
-    <!-- Navigation -->
-    <nav class="nav" id="main-nav">
-      <button class="nav-btn active" data-tab="today" title="Дашборд">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        <span>Дашборд</span>
-      </button>
-      <button class="nav-btn" data-tab="schedule" title="Расписание">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-        <span>Расписание</span>
-      </button>
-      <button class="nav-btn" data-tab="pack" title="Что взять">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-        <span>Вещи</span>
-      </button>
-      <button class="nav-btn" data-tab="buses" title="Автобусы">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18M7 18v2M17 18v2M7 6V4a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v2"/></svg>
-        <span>Автобусы</span>
-      </button>
-      <button class="nav-btn" data-tab="notes" title="Заметки">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        <span>Заметки</span>
-      </button>
-      <button class="nav-btn" data-tab="diary" title="Дневник">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-        <span>Дневник</span>
-      </button>
-      <button class="nav-btn" data-tab="profile" title="Профиль">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>Профиль</span>
-      </button>
-    </nav>
-
-    <!-- Main content -->
     <main class="main">
-      <!-- DASHBOARD / TODAY -->
+      <!-- TODAY -->
       <section id="tab-today" class="tab active">
         <div class="section-header">
           <h2 id="today-date">Сегодня</h2>
           <p class="subtitle" id="today-weekday"></p>
         </div>
-
-        <!-- Big next action for the child -->
         <div id="dash-hero"></div>
-
-        <!-- Status + guidance -->
         <div id="dash-status"></div>
-
-        <!-- Day timeline: leave → school → home -->
         <div class="dash-section">
-          <h3>План дня</h3>
+          <h3>План дня · таймлайн</h3>
           <div id="day-timeline" class="day-timeline"></div>
         </div>
-
-        <!-- Visual week grid -->
         <div class="dash-section">
           <div class="dash-section-head">
-            <h3>Неделя</h3>
+            <h3>Нагрузка недели</h3>
             <div class="dash-legend">
               <span class="legend-item lesson"><i></i>Урок</span>
               <span class="legend-item club"><i></i>Кружок</span>
-              <span class="legend-item free"><i></i>Свободно</span>
             </div>
           </div>
-          <div class="week-grid-wrap">
+          <div id="week-charts"></div>
+          <div class="week-grid-wrap mt-12">
             <div id="week-grid" class="week-grid"></div>
           </div>
         </div>
-
-        <!-- Today's list with breaks -->
         <div class="dash-section">
           <h3>Уроки и перемены</h3>
           <div id="today-lessons" class="cards-list"></div>
-          <div id="today-empty" class="empty-state hidden">
-            <p>На сегодня ничего нет</p>
-            <button class="btn btn-secondary" data-goto="schedule">Добавить в расписание</button>
-          </div>
         </div>
-
-        <!-- Quick day summary on dashboard -->
         <div class="dash-section">
-          <div class="dash-section-head">
-            <h3>Итог дня</h3>
-            <button class="btn btn-secondary btn-sm" data-goto="diary">Дневник</button>
-          </div>
-          <div id="dash-daylog"></div>
-        </div>
-
-        <div class="quick-pack">
-          <h3>Что взять сегодня</h3>
-          <div id="today-pack-list" class="pack-list"></div>
+          <h3>Домашка</h3>
+          <div id="today-hw"></div>
         </div>
       </section>
 
@@ -123,44 +81,151 @@
       <section id="tab-schedule" class="tab">
         <div class="section-header">
           <h2>Расписание</h2>
-          <button class="btn btn-primary btn-sm" id="add-schedule-btn">+ Добавить</button>
+          <p class="subtitle">Уроки и кружки по дням</p>
         </div>
-        <div class="segmented" id="schedule-type">
-          <button class="seg-btn active" data-type="lessons">Уроки</button>
-          <button class="seg-btn" data-type="clubs">Кружки</button>
+        <div class="day-switcher" id="day-switcher"></div>
+        <div class="type-switch">
+          <button class="type-btn active" data-type="lessons">Уроки</button>
+          <button class="type-btn" data-type="clubs">Кружки</button>
         </div>
-        <div class="day-tabs" id="day-tabs"></div>
-        <div id="schedule-list" class="cards-list"></div>
-        <div id="schedule-empty" class="empty-state hidden">
-          <p>Пока пусто. Добавьте первый пункт.</p>
+        <div id="schedule-list"></div>
+      </section>
+
+
+      <!-- KANBAN -->
+      <section id="tab-kanban" class="tab">
+        <div class="section-header">
+          <h2>Канбан</h2>
+          <p class="subtitle">Перетаскивай уроки и события при заменах</p>
         </div>
+        <div class="type-switch mb-8">
+          <button class="type-btn active" data-kview="board">Доска</button>
+          <button class="type-btn" data-kview="day">День</button>
+        </div>
+        <div id="kanban-board" class="kanban-board"></div>
+        <p class="hint mt-12">Нажми карточку — изменить. Стрелки ← → переносят на другой день (замена). + добавляет урок или событие.</p>
       </section>
 
       <!-- PACK -->
       <section id="tab-pack" class="tab">
         <div class="section-header">
           <h2>Что взять</h2>
-          <select id="pack-day-select" class="select"></select>
+          <p class="subtitle" id="pack-day-label">На сегодня</p>
         </div>
-        <div id="pack-list" class="pack-list"></div>
-        <div id="pack-empty" class="empty-state hidden">
-          <p>Для выбранного дня вещей нет</p>
-        </div>
-        <div class="pack-actions">
-          <button class="btn btn-secondary" id="reset-pack-checks">Сбросить галочки</button>
-        </div>
+        <div class="day-switcher" id="pack-day-switcher"></div>
+        <div id="pack-list"></div>
+        <button class="btn btn-secondary btn-block mt-12" id="pack-reset">Сбросить галочки</button>
       </section>
 
       <!-- BUSES -->
       <section id="tab-buses" class="tab">
         <div class="section-header">
           <h2>Автобусы</h2>
-          <button class="btn btn-primary btn-sm" id="add-bus-btn">+ Маршрут</button>
+          <p class="subtitle">Маршруты и когда выходить</p>
         </div>
-        <p class="hint">Укажите время отправления и сколько минут идти до остановки. Планер покажет, когда выходить.</p>
-        <div id="buses-list" class="cards-list"></div>
-        <div id="buses-empty" class="empty-state hidden">
-          <p>Маршрутов пока нет</p>
+        <div id="buses-list"></div>
+      </section>
+
+      <!-- AGENT -->
+      <section id="tab-agent" class="tab">
+        <div class="section-header">
+          <h2>Агент Орбита</h2>
+          <p class="subtitle">Помощник по расписанию</p>
+        </div>
+        <div class="agent-cats" id="agent-cats">
+          <button type="button" class="agent-cat active" data-cat="all">Все</button>
+          <button type="button" class="agent-cat" data-cat="info">Инфо</button>
+          <button type="button" class="agent-cat" data-cat="add">Добавить</button>
+          <button type="button" class="agent-cat" data-cat="delete">Удалить</button>
+          <button type="button" class="agent-cat" data-cat="move">Перенос</button>
+        </div>
+        <div class="agent-suggestions" id="agent-suggestions">
+          <button class="chip" data-cat="info" data-cmd="помощь">Помощь</button>
+          <button class="chip" data-cat="info" data-cmd="свободное время">Свободное время</button>
+          <button class="chip" data-cat="info" data-cmd="нагрузка недели">Нагрузка</button>
+          <button class="chip" data-cat="info" data-cmd="что взять завтра">Что взять</button>
+          <button class="chip" data-cat="info" data-cmd="следующий урок">Сейчас / далее</button>
+          <button class="chip" data-cat="info" data-cmd="статистика">Статистика</button>
+          <button class="chip" data-cat="info" data-cmd="список предметов">Предметы</button>
+          <button class="chip" data-cat="add" data-cmd="добавь урок Математика пн 8:30">+ Урок</button>
+          <button class="chip" data-cat="add" data-cmd="добавь кружок Робототехника ср 15:00-16:30">+ Кружок</button>
+          <button class="chip" data-cat="add" data-cmd="заполни день сегодня">Типовой день</button>
+          <button class="chip" data-cat="delete" data-cmd="удали все уроки в понедельник">Удалить день</button>
+          <button class="chip" data-cat="delete" data-cmd="очисти расписание">Очистить расписание</button>
+          <button class="chip" data-cat="delete" data-cmd="удали всю домашку">Очистить ДЗ</button>
+          <button class="chip" data-cat="move" data-cmd="перенеси математику с пн на вт">Перенос урока</button>
+        </div>
+        <div class="agent-chat" id="agent-chat"></div>
+        <div class="agent-input-row">
+          <input type="text" class="input" id="agent-input" placeholder="Команда или вопрос…" autocomplete="off" />
+          <button class="btn btn-primary" id="agent-send">→</button>
+        </div>
+      </section>
+
+      <!-- TASKS -->
+      <section id="tab-tasks" class="tab">
+        <div class="section-header">
+          <h2>Задачи</h2>
+          <p class="subtitle">Домашка и цели</p>
+        </div>
+        <div class="type-switch">
+          <button class="type-btn active" data-task="hw">Домашка</button>
+          <button class="type-btn" data-task="goals">Цели</button>
+        </div>
+        <div id="tasks-list"></div>
+      </section>
+
+      <!-- DIARY -->
+      <section id="tab-diary" class="tab">
+        <div class="section-header">
+          <h2>Дневник</h2>
+          <p class="subtitle">Итог дня</p>
+        </div>
+        <div class="form-group">
+          <label>Дата</label>
+          <input type="date" class="input" id="diary-date" />
+        </div>
+        <div class="form-group">
+          <label>Настроение</label>
+          <div class="mood-row" id="diary-mood">
+            <button type="button" class="mood-btn" data-mood="1">😫</button>
+            <button type="button" class="mood-btn" data-mood="2">😕</button>
+            <button type="button" class="mood-btn active" data-mood="3">😐</button>
+            <button type="button" class="mood-btn" data-mood="4">🙂</button>
+            <button type="button" class="mood-btn" data-mood="5">😄</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Где остался после школы</label>
+          <select class="input" id="diary-stayed">
+            <option value="">—</option>
+            <option value="home">Дома</option>
+            <option value="club">Кружок</option>
+            <option value="friend">У друга</option>
+            <option value="other">Другое</option>
+          </select>
+        </div>
+        <div class="form-group hidden" id="diary-stayed-other-wrap">
+          <label>Уточни</label>
+          <input type="text" class="input" id="diary-stayed-other" placeholder="Например, у тёти" />
+        </div>
+        <div class="form-group">
+          <label>Замечания</label>
+          <textarea class="textarea" id="diary-remarks" rows="2" placeholder="От учителя… или «не было»"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Инциденты</label>
+          <textarea class="textarea" id="diary-incidents" rows="2" placeholder="Опоздание, ссора…"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Заметки на завтра</label>
+          <textarea class="textarea" id="diary-notes" rows="2"></textarea>
+        </div>
+        <button class="btn btn-primary btn-block" id="diary-save-btn">Сохранить итог</button>
+        <div class="dash-section mt-12">
+          <h3>История</h3>
+          <select class="input" id="diary-month" style="width:auto;min-width:140px;margin-bottom:10px"></select>
+          <div id="diary-history"></div>
         </div>
       </section>
 
@@ -168,303 +233,104 @@
       <section id="tab-notes" class="tab">
         <div class="section-header">
           <h2>Заметки</h2>
-          <div style="display:flex;gap:8px">
-            <button class="btn btn-secondary btn-sm" id="record-voice-btn" title="Голосовая заметка">🎤</button>
-            <button class="btn btn-primary btn-sm" id="add-note-btn">+ Заметка</button>
-          </div>
+          <p class="subtitle">Текст и голосовые</p>
         </div>
-        <div id="voice-rec-status" class="voice-status hidden">
-          <span class="rec-dot"></span>
-          <span id="voice-rec-timer">00:00</span>
-          <button class="btn btn-danger btn-sm" id="stop-voice-btn">Стоп</button>
-        </div>
-        <input type="search" id="notes-search" class="input search" placeholder="Поиск...">
-        <div id="notes-list" class="cards-list"></div>
-        <div id="notes-empty" class="empty-state hidden">
-          <p>Заметок пока нет</p>
-        </div>
-      </section>
-
-
-      <!-- DIARY -->
-      <section id="tab-diary" class="tab">
-        <div class="section-header">
-          <h2>Дневник</h2>
-          <button class="btn btn-primary btn-sm" id="diary-save-btn">Сохранить</button>
-        </div>
-        <p class="hint">Коротко: как прошёл день, где был после школы, были ли замечания. Это для себя и родителей — не обязательно писать каждый день.</p>
-
-        <label class="hint" style="display:block;margin-bottom:6px">Дата
-          <input type="date" id="diary-date" class="input" style="margin-top:4px">
-        </label>
-
-        <div class="form" style="margin-top:12px">
-          <label>Как прошёл день
-            <div class="mood-row" id="diary-mood">
-              <button type="button" class="mood-btn" data-mood="1" title="Тяжело">😢</button>
-              <button type="button" class="mood-btn" data-mood="2" title="Так себе">😐</button>
-              <button type="button" class="mood-btn" data-mood="3" title="Нормально">🙂</button>
-              <button type="button" class="mood-btn" data-mood="4" title="Хорошо">😊</button>
-              <button type="button" class="mood-btn" data-mood="5" title="Отлично">🤩</button>
-            </div>
-          </label>
-          <label>Где остался после школы
-            <select id="diary-stayed" class="select">
-              <option value="">Не указано</option>
-              <option value="home">Дома</option>
-              <option value="grandma">У бабушки / дедушки</option>
-              <option value="dad">У папы</option>
-              <option value="mom">У мамы</option>
-              <option value="friend">У друга / подруги</option>
-              <option value="club">На кружке / секции</option>
-              <option value="other">Другое</option>
-            </select>
-          </label>
-          <label id="diary-stayed-other-wrap" class="hidden">Уточни где
-            <input type="text" id="diary-stayed-other" class="input" placeholder="Например, у тёти">
-          </label>
-          <label>Замечания в школе
-            <textarea id="diary-remarks" class="input textarea" rows="2" placeholder="От учителя, завуча… или «не было»"></textarea>
-          </label>
-          <label>Инциденты / ситуации
-            <textarea id="diary-incidents" class="input textarea" rows="2" placeholder="Ссора, опоздание, потерял что-то…"></textarea>
-          </label>
-          <label>Взять на заметку
-            <textarea id="diary-notes" class="input textarea" rows="2" placeholder="Завтра взять справку, повторить стих…"></textarea>
-          </label>
-        </div>
-
-        <div class="divider"></div>
-        <div class="dash-section-head">
-          <h3>История</h3>
-          <select id="diary-month" class="select" style="width:auto;min-width:140px"></select>
-        </div>
-        <div id="diary-history" class="cards-list"></div>
-        <div id="diary-history-empty" class="empty-state hidden">
-          <p>Пока записей нет</p>
-        </div>
+        <div id="notes-list"></div>
       </section>
 
       <!-- PROFILE -->
       <section id="tab-profile" class="tab">
         <div class="section-header">
           <h2>Профиль</h2>
+          <p class="subtitle">Данные, QR, настройки</p>
         </div>
-
-        <div class="profile-nav" id="profile-tabs">
-          <button class="pnav-btn active" data-ptab="me"><span class="pnav-ic">👤</span><span>Я</span></button>
-          <button class="pnav-btn" data-ptab="people"><span class="pnav-ic">👥</span><span>Люди</span></button>
-          <button class="pnav-btn" data-ptab="holidays"><span class="pnav-ic">🏖️</span><span>Каникулы</span></button>
-          <button class="pnav-btn" data-ptab="data"><span class="pnav-ic">💾</span><span>Данные</span></button>
-          <button class="pnav-btn" data-ptab="qr"><span class="pnav-ic">📷</span><span>QR</span></button>
-          <button class="pnav-btn" data-ptab="settings"><span class="pnav-ic">🎨</span><span>Вид</span></button>
-          <button class="pnav-btn" data-ptab="templates"><span class="pnav-ic">📄</span><span>Шаблоны</span></button>
-          <button class="pnav-btn" data-ptab="about"><span class="pnav-ic">ℹ️</span><span>О нас</span></button>
+        <div class="ptabs" id="profile-tabs">
+          <button class="ptab active" data-ptab="info">О себе</button>
+          <button class="ptab" data-ptab="people">Люди</button>
+          <button class="ptab" data-ptab="holidays">Каникулы</button>
+          <button class="ptab" data-ptab="data">Данные</button>
+          <button class="ptab" data-ptab="qr">QR-обмен</button>
+          <button class="ptab" data-ptab="json">JSON</button>
+          <button class="ptab" data-ptab="settings">Настройки</button>
+          <button class="ptab ptab-danger" data-ptab="danger">Очистка</button>
+          <button class="ptab" data-ptab="about">О приложении</button>
         </div>
-
-        <div class="ptab active" id="ptab-me">
-          <div class="profile-card" id="profile-card">
-            <div class="profile-avatar-wrap">
-              <div class="profile-avatar" id="profile-avatar">?</div>
-              <label class="avatar-upload-btn" title="Фото">
-                📷
-                <input type="file" id="pf-photo" accept="image/*" hidden>
-              </label>
-            </div>
-            <div class="profile-info">
-              <h3 id="profile-name">Имя не указано</h3>
-              <p id="profile-class"></p>
-              <p id="profile-school"></p>
-            </div>
-          </div>
-          <form id="profile-form" class="form">
-            <label>Имя
-              <input type="text" id="pf-name" class="input" placeholder="Как тебя зовут">
-            </label>
-            <label>Класс
-              <input type="text" id="pf-class" class="input" placeholder="Например, 9А">
-            </label>
-            <label>Школа
-              <input type="text" id="pf-school" class="input" placeholder="Название школы">
-            </label>
-            <label>Дополнительно
-              <textarea id="pf-notes" class="input textarea" rows="3" placeholder="Любая информация о себе"></textarea>
-            </label>
-            <button type="submit" class="btn btn-primary">Сохранить профиль</button>
-            <button type="button" class="btn btn-secondary btn-sm" id="pf-photo-remove" style="margin-top:8px">Убрать фото</button>
-          </form>
-        </div>
-
-        <div class="ptab" id="ptab-people">
-          <p class="hint">Друзья, одноклассники, родственники — чтобы не забыть поздравить.</p>
-          <div id="people-list" class="cards-list"></div>
-          <button class="btn btn-secondary btn-sm" id="add-person-btn" style="margin-top:8px">+ Человек</button>
-        </div>
-
-        <div class="ptab" id="ptab-holidays">
-          <p class="hint">Когда начинаются и заканчиваются, какие задания на каникулы.</p>
-          <div id="holidays-list" class="cards-list"></div>
-          <button class="btn btn-secondary btn-sm" id="add-holiday-btn" style="margin-top:8px">+ Каникулы</button>
-        </div>
-
-        <div class="ptab" id="ptab-data">
-          <p class="hint">Все данные хранятся только на этом устройстве. Без интернета приложение работает полностью.</p>
-          <div class="data-actions">
-            <button class="btn btn-secondary" id="export-json">Экспорт JSON</button>
-            <button class="btn btn-secondary" id="share-data">Поделиться / выборочно</button>
-            <button class="btn btn-secondary" id="import-json">Импорт JSON</button>
-            <input type="file" id="import-file" accept=".json,application/json" hidden>
-            <button class="btn btn-secondary" id="generate-prompt">Промпт для нейросети</button>
-            <button class="btn btn-secondary" id="load-demo">Загрузить пример</button>
-            <button class="btn btn-primary" id="check-update">Обновить приложение</button>
-            <p class="hint" id="app-version-label" style="margin-top:4px"></p>
-            <button class="btn btn-danger" id="clear-data">Очистить всё</button>
-          </div>
-          <div id="prompt-box" class="prompt-box hidden">
-            <p>Скопируй этот промпт, вставь в нейросеть, получи JSON и импортируй:</p>
-            <textarea id="ai-prompt" class="input textarea" rows="8" readonly></textarea>
-            <button class="btn btn-primary btn-sm" id="copy-prompt">Копировать</button>
-          </div>
-        </div>
-
-        <div class="ptab" id="ptab-qr">
-          <p class="hint"><strong>Обмен через QR</strong> — удобно передать уроки однокласснику или всю базу родственнику. Каникулы и дни рождения тоже по отдельности.</p>
-          <p class="hint">Сформируй QR → другой человек в своём планере: QR-обмен → «Считать QR» или вставит текст.</p>
-          <div class="data-actions" style="margin-top:12px">
-            <button class="btn btn-secondary" id="qr-gen-lessons">QR: только уроки</button>
-            <button class="btn btn-secondary" id="qr-gen-people">QR: люди и ДР</button>
-            <button class="btn btn-secondary" id="qr-gen-holidays">QR: каникулы</button>
-            <button class="btn btn-secondary" id="qr-gen-clubs">QR: кружки</button>
-            <button class="btn btn-primary" id="qr-gen-full">QR: вся база</button>
-          </div>
-          <div id="qr-result" class="about-card hidden" style="margin-top:14px;text-align:center">
-            <div class="about-name" id="qr-result-title">QR</div>
-            <div id="qr-canvas-wrap"></div>
-            <p class="hint" id="qr-result-hint"></p>
-            <button class="btn btn-secondary btn-sm" id="qr-copy-payload" style="margin-top:8px">Копировать данные</button>
-          </div>
-          <div class="divider"></div>
-          <h3>Считать QR / вставить</h3>
-          <div class="data-actions">
-            <button class="btn btn-primary" id="qr-scan-btn">Сканировать камерой</button>
-            <button class="btn btn-secondary" id="qr-scan-file">Фото QR с галереи</button>
-            <input type="file" id="qr-file-input" accept="image/*" hidden>
-            <label>Или вставь текст из QR
-              <textarea id="qr-paste" class="input textarea" rows="3" placeholder="SP2|..."></textarea>
-            </label>
-            <button class="btn btn-secondary" id="qr-import-paste">Импортировать вставку</button>
-          </div>
-          <video id="qr-video" class="hidden" playsinline style="width:100%;border-radius:12px;margin-top:10px;background:#000"></video>
-          <canvas id="qr-scan-canvas" class="hidden"></canvas>
-          <button class="btn btn-danger btn-sm hidden" id="qr-scan-stop" style="margin-top:8px">Остановить камеру</button>
-        </div>
-
-        <div class="ptab" id="ptab-settings">
-          <p class="hint">Внешний вид. Настройки сохраняются на этом устройстве.</p>
-          <form class="form" id="settings-form">
-            <label>Скругление углов
-              <select id="set-radius" class="select">
-                <option value="6">Острые</option>
-                <option value="10">Слегка</option>
-                <option value="12">Обычные</option>
-                <option value="16">Мягкие</option>
-                <option value="22">Очень мягкие</option>
-              </select>
-            </label>
-            <label>Плотность списка
-              <select id="set-density" class="select">
-                <option value="comfortable">Комфортная</option>
-                <option value="compact">Компактная</option>
-              </select>
-            </label>
-            <label>Размер шрифта
-              <select id="set-font" class="select">
-                <option value="15">Меньше</option>
-                <option value="16">Обычный</option>
-                <option value="17">Крупнее</option>
-                <option value="18">Крупный</option>
-              </select>
-            </label>
-            <label class="pack-item" style="margin-top:8px">
-              <input type="checkbox" id="set-shadow">
-              <span class="pack-label">Тени у карточек</span>
-            </label>
-            <button type="submit" class="btn btn-primary">Сохранить вид</button>
-          </form>
-        </div>
-
-        <div class="ptab" id="ptab-templates">
-          <p class="hint"><strong>Как пользоваться шаблонами</strong></p>
-          <ol class="instruct-list">
-            <li>Скачай нужный шаблон (JSON-файл).</li>
-            <li>Открой в блокноте или отдай нейросети: «Заполни этот шаблон моими данными».</li>
-            <li>Подставь свои значения и сохрани.</li>
-            <li>Профиль → Данные → <strong>Импорт JSON</strong> → файл или вставка текста.</li>
-            <li>Можно заливать по одному блоку — остальное не сотрётся.</li>
-          </ol>
-          <div class="tools-list" style="margin-top:14px">
-            <button type="button" class="tool-card tpl-btn" data-tpl="full"><div class="tool-title">Полный шаблон</div><div class="tool-meta">Все блоки сразу</div></button>
-            <button type="button" class="tool-card tpl-btn" data-tpl="lessons"><div class="tool-title">Только уроки</div><div class="tool-meta">Расписание по дням</div></button>
-            <button type="button" class="tool-card tpl-btn" data-tpl="clubs"><div class="tool-title">Только кружки</div><div class="tool-meta">Доп. занятия</div></button>
-            <button type="button" class="tool-card tpl-btn" data-tpl="buses"><div class="tool-title">Только автобусы</div><div class="tool-meta">Школа / Дом</div></button>
-            <button type="button" class="tool-card tpl-btn" data-tpl="people"><div class="tool-title">Только люди и ДР</div><div class="tool-meta">Одноклассники, родственники</div></button>
-            <button type="button" class="tool-card tpl-btn" data-tpl="holidays"><div class="tool-title">Только каникулы</div><div class="tool-meta">Даты и задания</div></button>
-            <button type="button" class="tool-card tpl-btn" data-tpl="notes"><div class="tool-title">Только заметки</div><div class="tool-meta">Без аудио</div></button>
-          </div>
-          <div class="about-card" style="margin-top:16px">
-            <div class="about-name">QR-код приложения</div>
-            <p class="hint">Отсканируй камерой — откроется страница планера.</p>
-            <img src="icons/qr-app.png" alt="QR код Школьный планер" class="qr-img" width="200" height="200">
-            <p class="hint" style="word-break:break-all">https://smol0901-jpg.github.io/school-planer/</p>
-          </div>
-        </div>
-
-        <div class="ptab" id="ptab-about">
-          <div class="about-card">
-            <div class="about-name">Смолянинов Александр Вячеславович</div>
-            <div class="about-label">Лейбл: NEURAL_ARCHITECT_PREMIUM++</div>
-            <p class="hint" style="margin-top:8px">Приложение «Школьный планер» — отдельный продукт. Работает офлайн.</p>
-            <div class="about-contacts">
-              <a class="contact-chip" href="https://t.me/ASV_PROD" target="_blank" rel="noopener">Telegram ASV_PROD</a>
-              <a class="contact-chip" href="https://dzen.ru/ASV_PROD" target="_blank" rel="noopener">Дзен ASV_PROD</a>
-              <a class="contact-chip" href="https://vk.com/smolyaninovchef" target="_blank" rel="noopener">VK smolyAninovchef</a>
-            </div>
-            <button class="btn btn-secondary btn-sm" id="feedback-btn" style="margin-top:12px;width:100%">Обратная связь</button>
-          </div>
-          <h3 style="margin:16px 0 8px">Другие инструменты автора</h3>
-          <div class="tools-list">
-            <a class="tool-card" href="https://smol0901-jpg.github.io/Cifra/" target="_blank" rel="noopener"><div class="tool-title">Cifra</div><div class="tool-meta">github.io/Cifra</div></a>
-            <a class="tool-card" href="https://smol0901-jpg.github.io/Flowforge-2-3/" target="_blank" rel="noopener"><div class="tool-title">Flowforge 2.3</div><div class="tool-meta">Автоматизация</div></a>
-            <a class="tool-card" href="https://smol0901-jpg.github.io/haccp-studio-v8/" target="_blank" rel="noopener"><div class="tool-title">HACCP Studio v8</div><div class="tool-meta">Журналы ХАССП</div></a>
-            <a class="tool-card" href="https://lenpitspb.netlify.app/" target="_blank" rel="noopener"><div class="tool-title">LenPit SPB</div><div class="tool-meta">lenpitspb.netlify.app</div></a>
-          </div>
-        </div>
+        <div id="profile-content"></div>
       </section>
-
     </main>
 
-    <!-- Modals -->
-    <div id="modal-overlay" class="modal-overlay hidden">
-      <div class="modal" id="modal">
-        <div class="modal-header">
-          <h3 id="modal-title">Заголовок</h3>
-          <button class="icon-btn modal-close" aria-label="Закрыть">&times;</button>
-        </div>
-        <div class="modal-body" id="modal-body"></div>
-        <div class="modal-footer" id="modal-footer"></div>
-      </div>
-    </div>
+    <button class="fab hidden" id="fab" title="Добавить">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+    </button>
 
-    <!-- Toast -->
-    <div id="toast" class="toast hidden"></div>
+    <nav class="main-nav" id="main-nav">
+      <button class="nav-btn active" data-tab="today" title="Сегодня">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>Сегодня</span>
+      </button>
+      <button class="nav-btn" data-tab="schedule" title="Расписание">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span>Уроки</span>
+      </button>
+      <button class="nav-btn" data-tab="kanban" title="Канбан">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="10" rx="1"/><rect x="14" y="15" width="7" height="6" rx="1"/></svg>
+        <span>Канбан</span>
+      </button>
+      <button class="nav-btn" data-tab="pack" title="Рюкзак">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        <span>Рюкзак</span>
+      </button>
+      <button class="nav-btn" data-tab="buses" title="Автобусы">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16v10H4z"/><path d="M6 16v2M18 16v2M8 6V4h8v2"/></svg>
+        <span>Автобус</span>
+      </button>
+      <button class="nav-btn" data-tab="agent" title="Агент">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M16 14c0-2.2-1.8-4-4-4s-4 1.8-4 4"/><path d="M8 18h8"/></svg>
+        <span>Агент</span>
+      </button>
+      <button class="nav-btn" data-tab="tasks" title="Задачи">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <span>Задачи</span>
+      </button>
+      <button class="nav-btn" data-tab="diary" title="Дневник">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        <span>Дневник</span>
+      </button>
+      <button class="nav-btn" data-tab="notes" title="Заметки">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>Заметки</span>
+      </button>
+      <button class="nav-btn" data-tab="profile" title="Профиль">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Ещё</span>
+      </button>
+    </nav>
   </div>
 
+  <div class="modal-overlay hidden" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Заголовок</h3>
+        <button class="modal-close" id="modal-close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-footer" id="modal-footer"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
   <script src="js/qrcode.js"></script>
+  <script src="js/xlsx.mini.min.js"></script>
   <script src="js/jsQR.js"></script>
   <script src="js/app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(console.error);
+      navigator.serviceWorker.register('sw.js').catch(() => {});
     }
   </script>
 </body>
