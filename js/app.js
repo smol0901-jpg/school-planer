@@ -3,9 +3,16 @@
 
   const STORAGE_KEY = 'orbit-planner-v3';
   const BACKUP_KEY = 'orbit-planner-backup-v3';
-  const APP_VERSION = '3.10.0';
+  const APP_VERSION = '3.23.0';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+  // Склонения: «на понедельник», «во вторник», «в среду»
+  const DAYS_NA = ['понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу', 'воскресенье'];
+  const DAYS_PREP = ['в понедельник', 'во вторник', 'в среду', 'в четверг', 'в пятницу', 'в субботу', 'в воскресенье'];
+  const DAYS_GEN = ['понедельника', 'вторника', 'среды', 'четверга', 'пятницы', 'субботы', 'воскресенья'];
+  function dayNa(d) { return DAYS_NA[d] || '?'; }
+  function dayPrep(d) { return DAYS_PREP[d] || '?'; }
+  function dayGen(d) { return DAYS_GEN[d] || '?'; }
   const SUBJECTS = [
     'Разговоры о важном',
     'Русский язык',
@@ -31,7 +38,7 @@
   const SUBJECT_ALIASES = {
     'мат': 'Математика', 'матем': 'Математика', 'математика': 'Математика', 'algebra': 'Математика',
     'рус': 'Русский язык', 'русский': 'Русский язык', 'русск': 'Русский язык', 'русский язык': 'Русский язык',
-    'физра': 'Физкультура', 'физру': 'Физкультура', 'физ-ра': 'Физкультура', 'физкультура': 'Физкультура', 'физ': 'Физкультура',
+    'физра': 'Физкультура', 'физру': 'Физкультура', 'физ-ра': 'Физкультура', 'физкультура': 'Физкультура', 'физкул': 'Физкультура',
     'окруж': 'Окружающий мир', 'окружающий': 'Окружающий мир', 'окружающий мир': 'Окружающий мир', 'мир': 'Окружающий мир',
     'лит': 'Литературное чтение', 'чтение': 'Литературное чтение', 'литература': 'Литературное чтение', 'литературное чтение': 'Литературное чтение',
     'муз': 'Музыка', 'музыка': 'Музыка',
@@ -78,7 +85,7 @@
     });
     if (found) return found;
     // Не считать свободный текст предметом (привет, ок, спасибо и т.д.)
-    const blocked = /^(привет|здравств|хай|hello|hi|ку|йо|спасибо|пожалуйста|ок|окей|ладно|да|нет|хорошо|понял|ясно|стоп|отмена|help|помощь|агент|что|как|когда|где|зачем|почему|автобус|маршрут|домашк|дз|день\s*рожден|др)/;
+    const blocked = /^(привет|здравств|хай|hello|hi|ку|йо|спасибо|пожалуйста|ок|окей|ладно|да|нет|хорошо|понял|ясно|стоп|отмена|help|помощь|агент|что|как|когда|где|зачем|почему|автобус|маршрут|домашк|дз|день\s*рожден|др)$/;
     if (blocked.test(t)) return null;
     // Свободный текст — только если похож на название предмета из списка или 1 короткое слово не из blocked
     if (tokens.length === 1 && tokens[0].length >= 3 && !blocked.test(tokens[0])) {
@@ -110,29 +117,101 @@
     }).length;
   }
 
-  function getRelevantBuses(nowMin, mode, limit) {
+  function busDirection(b) {
+    const to = ((b.to || b.destination || '') + ' ' + (b.notes || '')).toLowerCase();
+    const from = (b.from || '').toLowerCase();
+    const dirField = (b.direction || b.dir || '').toLowerCase();
+    if (dirField === 'school' || dirField === 'школа' || dirField === 'to_school') return 'school';
+    if (dirField === 'home' || dirField === 'дом' || dirField === 'to_home') return 'home';
+    // explicit school destination
+    if (/(^|[\s,.(])школ|(^|[\s,.(])гимназ|(^|[\s,.(])лицей|school|колледж/.test(to)) return 'school';
+    // home / village destination (avoid matching случайные слова)
+    if (/(^|[\s,.(])дом(ой|а|у|е|$)\b|домой|home|рейзин|большое\s*рейзин/.test(to)) return 'home';
+    // from school → not school = homebound
+    if (/(^|[\s,.(])школ|(^|[\s,.(])гимназ|(^|[\s,.(])лицей/.test(from) && !/(^|[\s,.(])школ/.test(to)) return 'home';
+    // from home/village → schoolbound if not already home
+    if (/(^|[\s,.(])дом|рейзин|пос[её]л|home/.test(from) && !/(^|[\s,.(])дом|рейзин/.test(to)) return 'school';
+    return 'other';
+  }
+
+  function getRelevantBuses(nowMin, mode, limit, opts) {
     limit = limit || 4;
-    const horizon = nowMin + 120; // next 2 hours
-    // dedupe by number+time+from+to
+    opts = opts || {};
+    const horizon = opts.horizon != null ? opts.horizon : nowMin + 120;
+    const allowPast = !!opts.allowPast;
     const seen = new Set();
     const list = [];
     const sorted = [...state.buses].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     for (const b of sorted) {
       const t = parseTime(b.time);
       if (t == null) continue;
-      if (t < nowMin - 2) continue; // already left
+      if (!allowPast && t < nowMin - 2) continue;
       if (t > horizon) continue;
       const key = [b.number, b.time, b.from || '', b.to || b.destination || ''].join('|');
       if (seen.has(key)) continue;
       seen.add(key);
-      const to = (b.to || b.destination || '').toLowerCase();
-      if (mode === 'morning' && /дом|домой|home/.test(to)) continue;
-      if (mode === 'home' && !/дом|домой|home/.test(to) && /школ/.test(to)) continue;
+      const dir = busDirection(b);
+      if (mode === 'home' && dir !== 'home') continue;
+      if (mode === 'school' || mode === 'morning') {
+        if (dir !== 'school') continue;
+      }
       list.push(b);
       if (list.length >= limit) break;
     }
     return list;
   }
+
+  function formatBusAgentList(buses, nowMin) {
+    if (!buses.length) return null;
+    return buses.map(b => {
+      const t = parseTime(b.time);
+      const walk = Number(b.walkMin) || 0;
+      const leave = t != null ? t - walk - nowMin : null;
+      const route = (b.from && b.to) ? (b.from + ' → ' + b.to) : (b.to || b.destination || b.from || '');
+      const dir = busDirection(b);
+      const dirL = dir === 'school' ? ' [в школу]' : dir === 'home' ? ' [домой]' : '';
+      return '• №' + (b.number || '?') + ' в ' + (b.time || '') +
+        (leave != null ? ', выйти через ' + formatDurationMin(leave) : '') +
+        ' · ' + route + dirL;
+    }).join('\n');
+  }
+
+  function agentBusesReply(mode) {
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    let buses = getRelevantBuses(nowMin, mode, 6);
+    if (buses.length) {
+      return (mode === 'school' ? 'Автобусы в школу:\n' : mode === 'home' ? 'Автобусы домой:\n' : 'Автобусы:\n') +
+        formatBusAgentList(buses, nowMin);
+    }
+    // no more today in this direction — look until end of day
+    buses = getRelevantBuses(nowMin, mode, 6, { horizon: 24 * 60 });
+    if (buses.length) {
+      return 'На ближайшие 2 часа рейсов ' + (mode === 'school' ? 'в школу' : mode === 'home' ? 'домой' : '') +
+        ' нет.\nПозже сегодня:\n' + formatBusAgentList(buses, nowMin);
+    }
+    // any direction remaining today
+    const any = getRelevantBuses(nowMin, 'all', 4, { horizon: 24 * 60 });
+    // earliest tomorrow-like: show first morning school buses as "завтра утром ориентир"
+    const morning = getRelevantBuses(0, mode === 'all' ? 'school' : mode, 3, { horizon: 12 * 60, allowPast: true });
+    const label = mode === 'school' ? 'в школу' : mode === 'home' ? 'домой' : '';
+    let msg = 'Сейчас рейсов ' + label + ' на сегодня больше нет.';
+    if (morning.length) {
+      msg += '\nБлижайшие утром (ориентир на завтра):\n' + formatBusAgentList(morning, 0);
+    } else if (any.length) {
+      msg += '\nДругие рейсы сегодня:\n' + formatBusAgentList(any, nowMin);
+    } else {
+      const allDirs = { school: 0, home: 0, other: 0 };
+      state.buses.forEach(b => { allDirs[busDirection(b)] = (allDirs[busDirection(b)] || 0) + 1; });
+      msg += '\nВ базе: в школу ' + allDirs.school + ', домой ' + allDirs.home + ', другие ' + allDirs.other + '.';
+      if (mode === 'school' && allDirs.school === 0) {
+        msg += '\nДобавь рейс «дом/остановка → школа» во вкладке Автобус (поле «куда» = школа).';
+      } else if (mode === 'home' && allDirs.home === 0) {
+        msg += '\nДобавь рейс «школа → дом» (поле «куда» = дом/посёлок).';
+      }
+    }
+    return msg;
+  }
+
 
   let state = {
     profile: { name: '', className: '', school: '', notes: '', photo: '' },
@@ -154,6 +233,17 @@
   let profileTab = 'info';
   let agentHistory = [];
   let agentPending = null; // { type: 'add_lesson'|'add_club'|'learn', subject?, day?, step? }
+  try {
+    const ap = localStorage.getItem('orbit-agent-pending');
+    if (ap) agentPending = JSON.parse(ap);
+  } catch (e) {}
+  function setAgentPending(v) {
+    agentPending = v;
+    try {
+      if (v) localStorage.setItem('orbit-agent-pending', JSON.stringify(v));
+      else localStorage.removeItem('orbit-agent-pending');
+    } catch (e) {}
+  }
   let agentKnowledge = {}; // learned phrases -> meaning (from IndexedDB)
   let goingHome = false; // en route home — show home buses
   let atHome = false; // arrived home — hide buses until tomorrow / next morning
@@ -168,12 +258,90 @@
 
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-  function save() {
+  const UNDO_KEY = 'orbit-undo-stack-v1';
+  const UNDO_MAX = 15;
+  let undoStack = [];
+  let undoBusy = false;
+
+  function loadUndoStack() {
+    // E2: undo only in memory — does not inflate localStorage / QuotaExceeded
+    undoStack = [];
+  }
+
+  function updateUndoBtn() {
+    const btn = document.getElementById('btn-undo');
+    if (!btn) return;
+    const n = undoStack.length;
+    btn.disabled = n === 0;
+    btn.style.opacity = n ? '1' : '0.4';
+    btn.title = n ? ('Отменить · сохранено шагов: ' + n) : 'Нечего отменять';
+    const badge = document.getElementById('undo-badge');
+    if (badge) {
+      badge.textContent = n > 0 ? String(n > 9 ? '9+' : n) : '';
+      badge.style.display = n ? 'flex' : 'none';
+    }
+  }
+
+  function undoLast(steps) {
+    steps = Math.max(1, Math.min(Number(steps) || 1, undoStack.length || 1));
+    if (!undoStack.length) { toast('Нечего отменять'); return; }
+    undoBusy = true;
     try {
+      let snap = null;
+      for (let i = 0; i < steps && undoStack.length; i++) snap = undoStack.pop();
+      if (!snap) { undoBusy = false; updateUndoBtn(); return; }
+      state = migrate(JSON.parse(snap));
       const raw = JSON.stringify(state);
       localStorage.setItem(STORAGE_KEY, raw);
       localStorage.setItem(BACKUP_KEY, raw);
-    } catch (e) { toast('Не удалось сохранить'); }
+      applyTheme();
+      render();
+      toast(steps === 1 ? '↩ Отменён 1 шаг' : '↩ Отменено шагов: ' + steps);
+    } catch (e) {
+      console.warn(e);
+      toast('Не удалось отменить');
+    }
+    undoBusy = false;
+    updateUndoBtn();
+  }
+
+  function stateForStorage() {
+    // Strip heavy audio payloads — stored in IndexedDB by audioId
+    const clone = JSON.parse(JSON.stringify(state));
+    if (Array.isArray(clone.notes)) {
+      clone.notes = clone.notes.map(n => {
+        if (n && n.audio) {
+          const { audio, ...rest } = n;
+          return rest;
+        }
+        return n;
+      });
+    }
+    return clone;
+  }
+
+  function save() {
+    try {
+      if (!undoBusy) {
+        try {
+          const snap = JSON.stringify(stateForStorage());
+          if (!undoStack.length || undoStack[undoStack.length - 1] !== snap) {
+            undoStack.push(snap);
+            if (undoStack.length > UNDO_MAX) undoStack.shift();
+          }
+        } catch (e) {}
+      }
+      const raw = JSON.stringify(stateForStorage());
+      localStorage.setItem(STORAGE_KEY, raw);
+      localStorage.setItem(BACKUP_KEY, raw);
+      updateUndoBtn();
+    } catch (e) {
+      if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
+        toast('Память заполнена. Удали старые голосовые заметки или очисти данные.');
+      } else {
+        toast('Не удалось сохранить');
+      }
+    }
   }
 
   function load() {
@@ -203,6 +371,60 @@
       s[k] = Array.isArray(s[k]) ? s[k] : [];
     }
     s.packChecks = s.packChecks || {};
+    const pc = s.packChecks;
+    Object.keys(pc).forEach(k => {
+      const m = /^pack-(\d)-(.+)$/.exec(k);
+      if (m) {
+        const nk = m[1] + ':' + m[2];
+        if (pc[k] && !pc[nk]) pc[nk] = pc[k];
+        delete pc[k];
+      }
+    });
+    // Normalize entity types (import / legacy)
+    const dayMap = {пн:0,понедельник:0,вт:1,вторник:1,ср:2,среда:2,чт:3,четверг:3,пт:4,пятница:4,сб:5,суббота:5,вс:6,воскресенье:6};
+    function normDay(v) {
+      if (typeof v === 'number' && v >= 0 && v <= 6) return v|0;
+      const t = String(v || '').toLowerCase().trim();
+      if (t in dayMap) return dayMap[t];
+      const n = parseInt(t, 10);
+      return (n >= 0 && n <= 6) ? n : 0;
+    }
+    function normTime(v) {
+      if (v == null || v === '') return '';
+      if (typeof v === 'number') {
+        const total = Math.round(v * 24 * 60);
+        return String(Math.floor(total/60)%24).padStart(2,'0') + ':' + String(total%60).padStart(2,'0');
+      }
+      const m = String(v).trim().match(/(\d{1,2})[:\.](\d{2})/);
+      if (m) {
+        const h = +m[1], mi = +m[2];
+        if (h > 23 || mi > 59) return '';
+        return String(h).padStart(2,'0') + ':' + String(mi).padStart(2,'0');
+      }
+      return String(v);
+    }
+    s.lessons = s.lessons.map(l => Object.assign({}, l, {
+      day: normDay(l.day),
+      start: normTime(l.start),
+      end: normTime(l.end) || l.end,
+      subject: String(l.subject || ''),
+      id: l.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 7))
+    }));
+    s.clubs = s.clubs.map(c => Object.assign({}, c, {
+      day: normDay(c.day),
+      start: normTime(c.start),
+      end: normTime(c.end) || c.end,
+      name: String(c.name || ''),
+      id: c.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 7))
+    }));
+    s.buses = s.buses.map(b => Object.assign({}, b, {
+      time: normTime(b.time) || b.time,
+      number: String(b.number || ''),
+      from: String(b.from || ''),
+      to: String(b.to || b.destination || ''),
+      walkMin: Number(b.walkMin) || 0,
+      id: b.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 7))
+    }));
     return s;
   }
 
@@ -237,8 +459,20 @@
     d.textContent = s == null ? '' : String(s);
     return d.innerHTML;
   }
+  function escapeAttr(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
   function toast(msg, ms = 2400) {
     const el = document.getElementById('toast');
+    if (el) {
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+    }
     el.textContent = msg;
     el.classList.add('show');
     clearTimeout(el._t);
@@ -246,6 +480,13 @@
   }
 
   function applyTheme() {
+    try {
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', state.settings.theme === 'light' ? '#f8fafc' : '#0b0f1a');
+      if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+        document.documentElement.classList.add('standalone');
+      }
+    } catch (e) {}
     document.documentElement.setAttribute('data-theme', state.settings.theme || 'dark');
     document.documentElement.setAttribute('data-accent', state.settings.accent || 'violet');
     document.documentElement.style.setProperty('--radius', (state.settings.radius || 14) + 'px');
@@ -267,9 +508,12 @@
     document.getElementById('modal-footer').innerHTML = footer || '';
     overlay.classList.remove('hidden');
   }
-  function closeModal() { overlay.classList.add('hidden'); }
+  function closeModal() { document.body.classList.remove('modal-open'); overlay.classList.add('hidden'); }
   overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
   document.getElementById('modal-close').addEventListener('click', closeModal);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.body.classList.contains('modal-open')) closeModal();
+  }); // keydown-modal-esc
 
   function switchTab(tab) {
     currentTab = tab;
@@ -668,8 +912,11 @@
   // ─── Schedule timing helpers ───
 
   function isAbortPendingCommand(lower) {
-    return /^(отмена|cancel|стоп|очисти|удали|убери|перенес|перемест|покажи|помощь|help|что взять|свободн|нагрузк|статистик|я домой|я поехал|закончил|я закончил)/i.test(lower)
-      || /очисти\s*расписан|удали\s*все|полный\s*сброс|удали\s*урок/.test(lower);
+    const t = (lower || '').trim();
+    if (/^(отмена|cancel|стоп|нет|хватит)([!.\s]*)$/i.test(t)) return true;
+    if (/^(очисти|удали|убери|перенес|перемест|покажи|помощь|help|что взять|свободн|нагрузк|статистик|я домой|я поехал|закончил|я закончил)(\s|$)/i.test(t)) return true;
+    if (/^(очисти\s*расписан|удали\s*все|полный\s*сброс|удали\s*урок)/i.test(t)) return true;
+    return false;
   }
 
   function findLessonConflicts(lesson, excludeId) {
@@ -688,6 +935,12 @@
 
   function addLessonSafe(lesson) {
     const conflicts = findLessonConflicts(lesson, lesson.id);
+    if (conflicts.length && state.settings.blockOverlap === false) {
+      // allowed: still warn but add
+      state.lessons.push(lesson);
+      save();
+      return { ok: true, conflicts, message: 'Добавлено с пересечением (в настройках разрешено).' };
+    }
     if (conflicts.length) {
       return {
         ok: false,
@@ -708,6 +961,7 @@
   }
 
   function isDuplicateBus(bus, excludeId) {
+    if (state.settings.blockDupBus === false) return false;
     return state.buses.some(b => {
       if (excludeId && b.id === excludeId) return false;
       return (b.time || '') === (bus.time || '')
@@ -808,21 +1062,21 @@
     openModal(isNew ? 'Новый урок' : 'Урок', `
       <div class="form-group"><label>Предмет (выбери или введи)</label>
         <div class="subject-chips" id="subj-chips">${chips}</div>
-        <input class="input" id="f-subject" list="subj-datalist" value="${escapeHtml(item?.subject || '')}" placeholder="Название предмета">
-        <datalist id="subj-datalist">${SUBJECTS.map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>
+        <input class="input" id="f-subject" list="subj-datalist" value="${escapeAttr(item?.subject || '')}" placeholder="Название предмета">
+        <datalist id="subj-datalist">${SUBJECTS.map(s => `<option value="${escapeAttr(s)}">`).join('')}</datalist>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Начало</label><input class="input" id="f-start" type="time" value="${escapeHtml(startDef)}"></div>
-        <div class="form-group"><label>Конец</label><input class="input" id="f-end" type="time" value="${escapeHtml(endDef)}"></div>
+        <div class="form-group"><label>Начало</label><input class="input" id="f-start" type="time" value="${escapeAttr(startDef)}"></div>
+        <div class="form-group"><label>Конец</label><input class="input" id="f-end" type="time" value="${escapeAttr(endDef)}"></div>
       </div>
       <div class="form-group"><label>День</label>
         <select class="input" id="f-day">${DAYS_FULL.map((d, i) => `<option value="${i}"${dayForSuggest === i ? ' selected' : ''}>${d}</option>`).join('')}</select>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Кабинет</label><input class="input" id="f-room" value="${escapeHtml(item?.room || '')}"></div>
-        <div class="form-group"><label>Учитель</label><input class="input" id="f-teacher" value="${escapeHtml(item?.teacher || '')}"></div>
+        <div class="form-group"><label>Кабинет</label><input class="input" id="f-room" value="${escapeAttr(item?.room || '')}"></div>
+        <div class="form-group"><label>Учитель</label><input class="input" id="f-teacher" value="${escapeAttr(item?.teacher || '')}"></div>
       </div>
-      <div class="form-group"><label>Что взять (через запятую)</label><input class="input" id="f-items" value="${escapeHtml((item?.items || []).join(', '))}"></div>
+      <div class="form-group"><label>Что взять (через запятую)</label><input class="input" id="f-items" value="${escapeAttr((item?.items || []).join(', '))}"></div>
     `, `${!isNew ? `<button class="btn btn-danger" id="modal-del">Удалить</button>` : ''}<button class="btn btn-primary" id="modal-save">Сохранить</button>`);
 
     document.getElementById('subj-chips')?.addEventListener('click', e => {
@@ -864,13 +1118,13 @@
     const item = id ? state.clubs.find(c => c.id === id) : null;
     const isNew = !item;
     openModal(isNew ? 'Новый кружок' : 'Кружок', `
-      <div class="form-group"><label>Название</label><input class="input" id="f-name" value="${escapeHtml(item?.name || '')}"></div>
-      <div class="form-row"><div class="form-group"><label>Начало</label><input class="input" id="f-start" type="time" value="${escapeHtml(item?.start || '15:00')}"></div>
-      <div class="form-group"><label>Конец</label><input class="input" id="f-end" type="time" value="${escapeHtml(item?.end || '16:30')}"></div></div>
+      <div class="form-group"><label>Название</label><input class="input" id="f-name" value="${escapeAttr(item?.name || '')}"></div>
+      <div class="form-row"><div class="form-group"><label>Начало</label><input class="input" id="f-start" type="time" value="${escapeAttr(item?.start || '15:00')}"></div>
+      <div class="form-group"><label>Конец</label><input class="input" id="f-end" type="time" value="${escapeAttr(item?.end || '16:30')}"></div></div>
       <div class="form-group"><label>День</label><select class="input" id="f-day">${DAYS_FULL.map((d, i) => `<option value="${i}"${(item ? item.day : currentScheduleDay) === i ? ' selected' : ''}>${d}</option>`).join('')}</select></div>
-      <div class="form-row"><div class="form-group"><label>Место</label><input class="input" id="f-place" value="${escapeHtml(item?.place || '')}"></div>
-      <div class="form-group"><label>Преподаватель</label><input class="input" id="f-teacher" value="${escapeHtml(item?.teacher || '')}"></div></div>
-      <div class="form-group"><label>Что взять</label><input class="input" id="f-items" value="${escapeHtml((item?.items || []).join(', '))}"></div>
+      <div class="form-row"><div class="form-group"><label>Место</label><input class="input" id="f-place" value="${escapeAttr(item?.place || '')}"></div>
+      <div class="form-group"><label>Преподаватель</label><input class="input" id="f-teacher" value="${escapeAttr(item?.teacher || '')}"></div></div>
+      <div class="form-group"><label>Что взять</label><input class="input" id="f-items" value="${escapeAttr((item?.items || []).join(', '))}"></div>
       <div class="form-group"><label>Заметки</label><textarea class="textarea" id="f-notes">${escapeHtml(item?.notes || '')}</textarea></div>
     `, `${!isNew ? `<button class="btn btn-danger" id="modal-del">Удалить</button>` : ''}<button class="btn btn-primary" id="modal-save">Сохранить</button>`);
     document.getElementById('modal-save').onclick = () => {
@@ -1053,15 +1307,15 @@
     const isNew = !item;
     const dayVal = item ? item.day : (forceDay != null ? forceDay : currentScheduleDay);
     openModal(isNew ? 'Новое событие' : 'Событие', `
-      <div class="form-group"><label>Название</label><input class="input" id="f-title" value="${escapeHtml(item?.title || item?.name || '')}" placeholder="Замена, собрание…"></div>
+      <div class="form-group"><label>Название</label><input class="input" id="f-title" value="${escapeAttr(item?.title || item?.name || '')}" placeholder="Замена, собрание…"></div>
       <div class="form-row">
-        <div class="form-group"><label>Начало</label><input class="input" id="f-start" type="time" value="${escapeHtml(item?.start || suggestNextStart(dayVal))}"></div>
-        <div class="form-group"><label>Конец</label><input class="input" id="f-end" type="time" value="${escapeHtml(item?.end || calcEndFromStart(item?.start || suggestNextStart(dayVal)))}"></div>
+        <div class="form-group"><label>Начало</label><input class="input" id="f-start" type="time" value="${escapeAttr(item?.start || suggestNextStart(dayVal))}"></div>
+        <div class="form-group"><label>Конец</label><input class="input" id="f-end" type="time" value="${escapeAttr(item?.end || calcEndFromStart(item?.start || suggestNextStart(dayVal)))}"></div>
       </div>
       <div class="form-group"><label>День</label>
         <select class="input" id="f-day">${DAYS_FULL.map((d, i) => `<option value="${i}"${dayVal === i ? ' selected' : ''}>${d}</option>`).join('')}</select>
       </div>
-      <div class="form-group"><label>Место</label><input class="input" id="f-place" value="${escapeHtml(item?.place || '')}"></div>
+      <div class="form-group"><label>Место</label><input class="input" id="f-place" value="${escapeAttr(item?.place || '')}"></div>
       <div class="form-group"><label>Заметки</label><textarea class="textarea" id="f-notes">${escapeHtml(item?.notes || '')}</textarea></div>
     `, `${!isNew ? `<button class="btn btn-danger" id="modal-del">Удалить</button>` : ''}<button class="btn btn-primary" id="modal-save">Сохранить</button>`);
 
@@ -1129,14 +1383,6 @@
   let busFilterDir = 'all'; // all | school | home
   let busShowPast = false;
 
-  function busDirection(b) {
-    const to = (b.to || b.destination || '').toLowerCase();
-    const from = (b.from || '').toLowerCase();
-    if (/дом|домой|рейзин|home|пос[её]л/.test(to)) return 'home';
-    if (/школ|гимназ|лицей|school/.test(to) || /дом|домой|рейзин/.test(from)) return 'school';
-    if (/школ|гимназ|лицей/.test(from)) return 'home';
-    return 'other';
-  }
 
   function renderBuses() {
     const list = document.getElementById('buses-list');
@@ -1160,7 +1406,7 @@
       </select>
       <select class="input" id="bus-num" style="flex:1">
         <option value="">Все номера</option>
-        ${numbers.map(n => `<option value="${escapeHtml(n)}"${busFilterNumber===n?' selected':''}>№ ${escapeHtml(n)}</option>`).join('')}
+        ${numbers.map(n => `<option value="${escapeAttr(n)}"${busFilterNumber===n?' selected':''}>№ ${escapeHtml(n)}</option>`).join('')}
       </select>
     </div>`;
 
@@ -1239,25 +1485,25 @@
     const isNew = !bus;
     openModal(isNew ? 'Новый маршрут' : 'Автобус', `
       <div class="form-row">
-        <div class="form-group"><label>Номер маршрута</label><input class="input" id="f-number" value="${escapeHtml(bus?.number || '')}" placeholder="42"></div>
-        <div class="form-group"><label>Время отправления</label><input class="input" id="f-time" type="time" value="${escapeHtml(bus?.time || '')}"></div>
+        <div class="form-group"><label>Номер маршрута</label><input class="input" id="f-number" value="${escapeAttr(bus?.number || '')}" placeholder="42"></div>
+        <div class="form-group"><label>Время отправления</label><input class="input" id="f-time" type="time" value="${escapeAttr(bus?.time || '')}"></div>
       </div>
-      <div class="form-group"><label>Откуда</label><input class="input" id="f-from" value="${escapeHtml(bus?.from || bus?.fromStop || '')}" placeholder="Дом, остановка «Парк»"></div>
-      <div class="form-group"><label>Куда</label><input class="input" id="f-to" value="${escapeHtml(bus?.to || bus?.destination || '')}" placeholder="Школа / Дом"></div>
+      <div class="form-group"><label>Откуда</label><input class="input" id="f-from" value="${escapeAttr(bus?.from || bus?.fromStop || '')}" placeholder="Дом, остановка «Парк»"></div>
+      <div class="form-group"><label>Куда</label><input class="input" id="f-to" value="${escapeAttr(bus?.to || bus?.destination || '')}" placeholder="Школа / Дом"></div>
       <div class="form-group"><label>Идти до остановки (мин)</label>
         <input class="input" id="f-walk" type="number" min="0" max="60" value="${bus?.walkMin ?? 5}">
         <p class="hint" style="margin-top:4px">Программа вычтет это из времени автобуса → «выйти через N мин»</p>
       </div>
       <h3 style="font-size:0.85rem;margin:12px 0 8px;color:var(--text-muted)">ПЕРЕСАДКА (необязательно)</h3>
       <div class="form-row">
-        <div class="form-group"><label>№ 2-го автобуса</label><input class="input" id="f-tnum" value="${escapeHtml(bus?.transferNumber || '')}" placeholder="15"></div>
-        <div class="form-group"><label>Время 2-го</label><input class="input" id="f-ttime" type="time" value="${escapeHtml(bus?.transferTime || '')}"></div>
+        <div class="form-group"><label>№ 2-го автобуса</label><input class="input" id="f-tnum" value="${escapeAttr(bus?.transferNumber || '')}" placeholder="15"></div>
+        <div class="form-group"><label>Время 2-го</label><input class="input" id="f-ttime" type="time" value="${escapeAttr(bus?.transferTime || '')}"></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Пересадка откуда</label><input class="input" id="f-tfrom" value="${escapeHtml(bus?.transferFrom || '')}"></div>
-        <div class="form-group"><label>Пересадка куда</label><input class="input" id="f-tto" value="${escapeHtml(bus?.transferTo || '')}"></div>
+        <div class="form-group"><label>Пересадка откуда</label><input class="input" id="f-tfrom" value="${escapeAttr(bus?.transferFrom || '')}"></div>
+        <div class="form-group"><label>Пересадка куда</label><input class="input" id="f-tto" value="${escapeAttr(bus?.transferTo || '')}"></div>
       </div>
-      <div class="form-group"><label>Заметки</label><input class="input" id="f-notes" value="${escapeHtml(bus?.notes || '')}" placeholder="Только по будням…"></div>
+      <div class="form-group"><label>Заметки</label><input class="input" id="f-notes" value="${escapeAttr(bus?.notes || '')}" placeholder="Только по будням…"></div>
     `, `${!isNew ? `<button class="btn btn-danger" id="modal-del">Удалить</button>` : ''}<button class="btn btn-primary" id="modal-save">Сохранить</button>`);
 
     document.getElementById('modal-save').onclick = () => {
@@ -1287,36 +1533,486 @@
   }
 
   // ─── AGENT ───
+
+  // ─── Stage 4: live suggestions + dialog helpers ───
+  let _liveTimer = null;
+  let _lastLiveJson = '';
+
+  function buildLiveSuggestions(raw) {
+    const t = normalizeAgentText(raw);
+    if (!t || t.length < 2) return [];
+    if (agentPending) return [];
+    const out = [];
+    const seen = new Set();
+    const push = (label, cmd, kind) => {
+      const k = (cmd || '').toLowerCase();
+      if (!k || seen.has(k) || out.length >= 5) return;
+      seen.add(k);
+      out.push({ label: label, cmd: cmd, kind: kind || 'catalog' });
+    };
+
+    const subj = resolveSubject(t);
+    if (subj) {
+      push('+ ' + subj, 'добавь урок ' + subj, 'subject');
+      push(subj + ' сегодня', 'расписание на сегодня', 'subject');
+      push('Что взять', 'что взять сегодня', 'subject');
+    }
+
+    const day = parseDayToken(t);
+    if (day != null) {
+      push('Расписание на ' + dayNa(day), 'расписание на ' + dayNa(day), 'day');
+      push('Удалить ' + dayNa(day), 'удали расписание на ' + dayNa(day), 'day');
+    }
+
+    if (/^доб|^добав|\+/.test(t)) {
+      push('Добавить урок', 'добавь урок', 'intent');
+      push('Добавить кружок', 'добавь кружок', 'intent');
+      push('Добавить ДЗ', 'добавь дз', 'intent');
+    }
+    if (/^удал|^очист|^убер/.test(t)) {
+      push('Удалить день', 'удали день', 'intent');
+      push('Очистить расписание', 'очисти расписание', 'intent');
+      push('Очистить автобусы', 'очисти автобусы', 'intent');
+    }
+    if (/^авт|^рейс|^марш/.test(t)) {
+      push('Автобусы сейчас', 'автобусы сейчас', 'intent');
+      push('Автобусы домой', 'автобусы домой', 'intent');
+      push('Автобусы в школу', 'автобусы в школу', 'intent');
+    }
+    if (/^пров|^рюк|^что\s*вз/.test(t)) {
+      push('Проверка дня', 'проверка дня', 'intent');
+      push('Что взять сегодня', 'что взять сегодня', 'intent');
+    }
+    if (/^лог|^журнал/.test(t)) {
+      push('Лог агента', 'лог агента', 'intent');
+      push('Лог внимания', 'лог внимания', 'intent');
+    }
+    if (/^помо|^help|^как|^что\s*уме/.test(t)) {
+      push('Помощь', 'помощь', 'info');
+    }
+    if (/\d+\s*[+\-*/]\s*\d+/.test(t) || /посчит|вычисл/.test(t)) {
+      push('Посчитать ' + t.replace(/=$/, ''), (t.endsWith('=') ? t : t + '='), 'calc');
+    }
+
+    if (typeof AGENT_CATALOG !== 'undefined') {
+      for (const cat of Object.values(AGENT_CATALOG)) {
+        for (const it of (cat.items || [])) {
+          const lab = (it.label || '').toLowerCase();
+          const cmd = (it.cmd || '').toLowerCase();
+          if (lab.includes(t) || cmd.includes(t) || t.includes(lab.slice(0, 4))) {
+            push(it.label, it.cmd, 'catalog');
+          }
+        }
+      }
+    }
+
+    try {
+      const top = topPresets(3);
+      for (const [id] of top) {
+        for (const c of Object.values(AGENT_CATALOG || {})) {
+          const it = (c.items || []).find(x => x.id === id);
+          if (it) push(it.label, it.cmd, 'preset');
+        }
+      }
+    } catch (e) {}
+
+    return out.slice(0, 5);
+  }
+
+  function renderLiveChips(chips) {
+    const el = document.getElementById('agent-live-chips');
+    if (!el) return;
+    const j = JSON.stringify(chips || []);
+    if (j === _lastLiveJson) return;
+    _lastLiveJson = j;
+    if (!chips || !chips.length) {
+      el.innerHTML = '';
+      el.classList.add('hidden');
+      return;
+    }
+    el.classList.remove('hidden');
+    el.innerHTML = chips.map(c =>
+      '<button type="button" class="agent-live-chip" data-cmd="' + escapeAttr(c.cmd) + '" data-kind="' + escapeAttr(c.kind || '') + '">' + escapeHtml(c.label) + '</button>'
+    ).join('');
+    el.querySelectorAll('.agent-live-chip').forEach(b => {
+      b.onclick = () => {
+        const input = document.getElementById('agent-input');
+        if (input) input.value = '';
+        renderLiveChips([]);
+        try { trackUsage('live:' + (b.dataset.kind || '') + ':' + b.dataset.cmd); } catch (e) {}
+        agentReply(b.dataset.cmd);
+      };
+    });
+  }
+
+  function onAgentInputLive(e) {
+    clearTimeout(_liveTimer);
+    const val = (e.target.value || '').trim();
+    if (val.length < 2 || agentPending) { renderLiveChips([]); return; }
+    _liveTimer = setTimeout(() => {
+      renderLiveChips(buildLiveSuggestions(val));
+    }, 120);
+  }
+
+  function pendingLabel(p) {
+    if (!p) return '';
+    if (p.type === 'add_lesson') {
+      if (p.step === 'subject') return 'Какой предмет?';
+      if (p.step === 'day') return '«' + (p.subject || '') + '» — какой день?';
+      if (p.step === 'time') return '«' + (p.subject || '') + '», ' + (p.day != null ? dayNa(p.day) : '') + ' — во сколько?';
+    }
+    if (p.type === 'add_club') {
+      if (p.step === 'name') return 'Как называется кружок?';
+      if (p.step === 'day') return '«' + (p.name || '') + '» — какой день?';
+      if (p.step === 'time') return '«' + (p.name || '') + '» — во сколько?';
+    }
+    if (p.type === 'add_conflict') return 'Конфликт: заменить / другое время / отмена';
+    if (p.type === 'delete_pick') return 'Что удалить?';
+    if (p.type === 'confirm_wipe') return 'Подтвердить удаление?';
+    if (p.type === 'learn') return 'Что значит «' + (p.phrase || '') + '»?';
+    return 'Жду ответа';
+  }
+
+  function nextStepSuggestions() {
+    const hour = new Date().getHours();
+    const s = [];
+    const add = (l, c) => { if (!s.find(x => x.cmd === c)) s.push({ label: l, cmd: c }); };
+    if (hour >= 5 && hour < 12) add('Что взять сегодня', 'что взять сегодня');
+    if (hour >= 16) add('Проверка дня', 'проверка дня');
+    if ((state.homework || []).some(h => !h.done)) add('Домашка', 'домашка');
+    if (typeof goingHome !== 'undefined' && goingHome) add('Автобусы домой', 'автобусы домой');
+    else add('Автобусы сейчас', 'автобусы сейчас');
+    add('Свободное время', 'свободное время');
+    return s.slice(0, 4);
+  }
+
+  function legacyChoicesToQR(m) {
+    if (m.quickReplies && m.quickReplies.length) return m.quickReplies;
+    if (m.choices && m.choices.length) {
+      return m.choices.map(c => ({ label: c.label || c, cmd: c.cmd || c }));
+    }
+    if (m.yesNo) {
+      return [
+        { label: 'Да', cmd: 'да' },
+        { label: 'Нет', cmd: 'нет' },
+        { label: 'Отмена', cmd: 'отмена' }
+      ];
+    }
+    if (m.subjects) {
+      return allSubjectsList().slice(0, 16).map(s => ({ label: s, cmd: s }));
+    }
+    return null;
+  }
+
   function renderAgent() {
     const chat = document.getElementById('agent-chat');
     if (!agentHistory.length) {
-      agentHistory.push({ role: 'bot', text: 'Привет! Напиши «добавь» — выберу предмет.\nСокращения: мат, рус, физра, окруж, лит…\n«помощь» — команды.' });
+      agentHistory.push({
+        role: 'bot',
+        text: 'Привет! Я Агент Орбита.\nНажми категорию → команду, или пиши текстом.\nДобавление урока/кружка — с кнопками дня и времени.'
+      });
     }
+
+    const catsEl = document.getElementById('agent-cats');
+    if (catsEl) {
+      const order = [
+        ['add', 'Добавить'],
+        ['schedule', 'Расписание'],
+        ['buses', 'Автобусы'],
+        ['pack', 'Рюкзак'],
+        ['people', 'Люди'],
+        ['scripts', 'Скрипты'],
+        ['files', 'Файлы'],
+        ['control', 'Управление'],
+        ['calc', 'Счёт'],
+        ['data', 'Данные'],
+        ['presets', 'Частые']
+      ];
+      catsEl.innerHTML = order.map(([k, title]) =>
+        '<button type="button" class="agent-cat" data-cat="' + k + '">' + title + '</button>'
+      ).join('');
+      catsEl.querySelectorAll('.agent-cat').forEach(btn => {
+        btn.onclick = () => {
+          catsEl.querySelectorAll('.agent-cat').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          try { sessionStorage.setItem('orbit-agent-cat', btn.dataset.cat); } catch (e) {}
+          const sug = document.getElementById('agent-suggestions');
+          if (!sug) return;
+          if (btn.dataset.cat === 'presets') {
+            const top = topPresets(10);
+            sug.innerHTML = top.length
+              ? top.map(([id, cnt]) => {
+                  let label = id, cmd = id;
+                  for (const c of Object.values(AGENT_CATALOG)) {
+                    const it = (c.items || []).find(i => i.id === id);
+                    if (it) { label = it.label; cmd = it.cmd; break; }
+                  }
+                  return '<button type="button" class="agent-chip" data-cmd=\"' + escapeAttr(cmd) + '\">' + escapeHtml(label) + '</button>';
+                }).join('')
+              : '<span class="hint">Частые команды появятся после 2–3 использований</span>';
+          } else {
+            const cat = AGENT_CATALOG[btn.dataset.cat];
+            if (!cat) { sug.innerHTML = ''; return; }
+            sug.innerHTML = cat.items.map(it =>
+              '<button type="button" class="agent-chip" data-cmd=\"' + escapeAttr(it.cmd) + '\" data-uid=\"' + escapeAttr(it.id) + '\">' + escapeHtml(it.label) + '</button>'
+            ).join('');
+          }
+          sug.querySelectorAll('[data-cmd]').forEach(b => {
+            b.onclick = () => {
+              if (b.dataset.uid) trackUsage(b.dataset.uid);
+              agentReply(b.dataset.cmd);
+            };
+          });
+        };
+      });
+      // auto-open first category once
+      if (!catsEl.dataset.opened) {
+        catsEl.dataset.opened = '1';
+        let saved = null;
+        try { saved = sessionStorage.getItem('orbit-agent-cat'); } catch (e) {}
+        const pick = (saved && catsEl.querySelector('.agent-cat[data-cat="' + saved + '"]')) || catsEl.querySelector('.agent-cat');
+        if (pick) pick.click();
+      }
+    }
+
+    // Persistent pending context bar
+    let bar = document.getElementById('agent-pending-bar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'agent-pending-bar';
+      bar.className = 'agent-pending-bar';
+      const inputRow = document.querySelector('.agent-input-row');
+      if (inputRow) inputRow.parentNode.insertBefore(bar, inputRow);
+    }
+    if (agentPending) {
+      bar.classList.remove('hidden');
+      bar.style.display = 'block';
+      bar.innerHTML = '<div class="pending-label">🎯 ' + escapeHtml(pendingLabel(agentPending)) + '</div>' +
+        '<div class="pending-actions">' +
+        '<button type="button" class="agent-choice-btn" data-cmd="назад">← Назад</button>' +
+        '<button type="button" class="agent-choice-btn" data-cmd="пропустить">Пропустить</button>' +
+        '<button type="button" class="agent-choice-btn" data-cmd="отмена">Отмена</button></div>';
+      bar.querySelectorAll('[data-cmd]').forEach(b => b.onclick = () => agentReply(b.dataset.cmd));
+      renderLiveChips([]);
+    } else {
+      bar.classList.add('hidden');
+      bar.style.display = 'none';
+      bar.innerHTML = '';
+    }
+
     chat.innerHTML = agentHistory.map((m, idx) => {
-      let body = `<div class="agent-msg ${m.role}">${escapeHtml(m.text).replace(/\n/g, '<br>')}`;
+      let body = '<div class="agent-msg ' + m.role + '">' + escapeHtml(m.text || '').replace(/\n/g, '<br>');
+      if (m.card) body += renderAgentCard(m.card);
       if (m.copyPrompt) {
-        body += `<button type="button" class="btn btn-secondary btn-block mt-8 agent-copy-btn" data-idx="${idx}">📋 Копировать промпт для нейросети</button>`;
+        body += '<button type="button" class="btn btn-secondary btn-block mt-8 agent-copy-btn" data-idx="' + idx + '">📋 Копировать</button>';
       }
-      if (m.subjects) {
-        body += `<div class="subject-chips mt-8" data-agent-subj="1">${SUBJECTS.map(s => `<button type="button" class="subject-chip" data-subj="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}</div>`;
+      const qr = legacyChoicesToQR(m);
+      if (qr && qr.length) {
+        body += '<div class="agent-choices">' + qr.map(c =>
+          '<button type="button" class="agent-choice-btn" data-cmd="' + escapeAttr(c.cmd) + '" data-idx="' + idx + '">' + escapeHtml(c.label) + '</button>'
+        ).join('') + '</div>';
       }
-      body += `</div>`;
+      if (idx === agentHistory.length - 1 && m.role === 'bot' && !agentPending) {
+        const ctx = nextStepSuggestions();
+        if (ctx.length) {
+          body += '<div class="agent-context-chips">' + ctx.map(c =>
+            '<button type="button" class="agent-context-chip" data-cmd="' + escapeAttr(c.cmd) + '">' + escapeHtml(c.label) + '</button>'
+          ).join('') + '</div>';
+        }
+      }
+      body += '</div>';
       return body;
     }).join('');
-    chat.scrollTop = chat.scrollHeight;
+    const nearBottom = (chat.scrollHeight - chat.scrollTop - chat.clientHeight) < 80;
+    if (nearBottom) chat.scrollTop = chat.scrollHeight;
     chat.querySelectorAll('.agent-copy-btn').forEach(btn => {
       btn.onclick = async () => {
         const msg = agentHistory[+btn.dataset.idx];
         if (!msg || !msg.copyPrompt) return;
-        try { await navigator.clipboard.writeText(msg.copyPrompt); toast('Промпт скопирован — вставь в нейросеть'); }
-        catch { toast('Не удалось скопировать'); }
+        try { await navigator.clipboard.writeText(msg.copyPrompt); toast('Скопировано'); }
+        catch (e) { toast('Не удалось скопировать'); }
       };
     });
-    chat.querySelectorAll('[data-agent-subj] .subject-chip').forEach(chip => {
-      chip.onclick = () => agentReply(chip.dataset.subj);
+    chat.querySelectorAll('.agent-choice-btn, .agent-context-chip').forEach(btn => {
+      btn.onclick = () => {
+        if (agentPending && btn.dataset.idx != null && +btn.dataset.idx < agentHistory.length - 1) {
+          // old button while pending — reset pending and run as new command
+          agentPending = null;
+        }
+        agentReply(btn.dataset.cmd);
+      };
     });
+    setupAgentDrop();
   }
 
+
+
+  function renderAgentCard(c) {
+    if (!c || !c.type) return '';
+    if (c.type === 'schedule' || c.type === 'buses' || c.type === 'list') {
+      const rows = (c.items || []).map(it =>
+        '<div class="agent-card-row">' +
+          '<div class="agent-card-time">' + escapeHtml(it.time || it.left || '') + '</div>' +
+          '<div class="agent-card-body">' +
+            '<div class="agent-card-title">' + escapeHtml(it.title || it.name || '') + '</div>' +
+            (it.meta ? '<div class="agent-card-meta">' + escapeHtml(it.meta) + '</div>' : '') +
+          '</div></div>'
+      ).join('');
+      return '<div class="agent-card" data-type="' + escapeAttr(c.type) + '">' +
+        (c.header ? '<div class="agent-card-header">' + escapeHtml(c.header) + '</div>' : '') +
+        rows +
+        (c.footer ? '<div class="agent-card-footer">' + escapeHtml(c.footer) + '</div>' : '') +
+        '</div>';
+    }
+    return '';
+  }
+
+  function pushBot(text, extra) {
+    const msg = Object.assign({ role: 'bot', text: text || '' }, extra || {});
+    agentHistory.push(msg);
+    if (agentHistory.length > 60) agentHistory = agentHistory.slice(-50);
+    try { if (text) agentLog('bot', String(text).slice(0, 300)); } catch (e) {}
+    try {
+      if (agentPending) localStorage.setItem('orbit-agent-pending', JSON.stringify(agentPending));
+      else localStorage.removeItem('orbit-agent-pending');
+    } catch (e) {}
+    renderAgent();
+    return msg;
+  }
+
+
+  function dailyCheckReport() {
+    const day = todayIndex();
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    const lines = [];
+    const lessons = state.lessons.filter(l => l.day === day).sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+    const remaining = lessons.filter(l => (parseTime(l.end) ?? 0) >= nowMin - 1);
+    lines.push(`📅 Сегодня ${dayPrep(day)}`);
+    lines.push(lessons.length ? `Уроков: ${lessons.length}, ещё впереди: ${remaining.length}` : 'Уроков нет');
+    // pack
+    const items = new Set();
+    lessons.forEach(l => (l.items || []).forEach(i => items.add(i)));
+    const checks = state.packChecks || {};
+    let packed = 0, total = items.size;
+    items.forEach(i => {
+      const k1 = day + ':' + i;
+      const k2 = day + ':' + String(i).toLowerCase();
+      if (checks[k1] || checks[k2] || checks[i]) packed++;
+    });
+    if (total) lines.push(`🎒 Рюкзак: ${packed}/${total} отмечено` + (packed < total ? ' — не всё собрано' : ' — ок'));
+    else lines.push('🎒 Список вещей на сегодня пуст');
+    // hw
+    const hw = state.homework.filter(h => !h.done);
+    lines.push(hw.length ? `📝 Несделанная домашка: ${hw.length}` : '📝 Домашка: всё закрыто');
+    // buses
+    const buses = getRelevantBuses(nowMin, goingHome ? 'home' : 'all', 3);
+    if (atHome) lines.push('🚌 Ты дома — автобусы не актуальны');
+    else if (buses.length) lines.push('🚌 Ближайшие: ' + buses.map(b => `№${b.number} в ${b.time}`).join(', '));
+    else lines.push('🚌 Ближайших автобусов нет');
+    // bday
+    (state.people || []).forEach(p => {
+      if (!p.birthday) return;
+      const d = daysUntilBirthday(p.birthday);
+      if (d != null && d <= 7) lines.push('🎂 Скоро ДР: ' + p.name + (d === 0 ? ' (сегодня!)' : d === 1 ? ' (завтра)' : ' (через ' + d + ' дн.)'));
+    });
+    // holidays tasks
+    const td = today.toISOString().slice(0,10);
+    (state.holidays||[]).forEach(h => {
+      if (h.start && h.end && td >= h.start && td <= h.end && Array.isArray(h.tasks)) {
+        const done = h.tasks.filter(t => t.done).length;
+        lines.push(`🏖 Каникулы «${h.name}»: задания ${done}/${h.tasks.length}`);
+      }
+    });
+    const attention = lines.filter(l => /не всё|Несделанная|нет/.test(l));
+    appendAttentionLog({ date: td, lines, issues: attention.length });
+    return lines.join('\n');
+  }
+
+  function appendAttentionLog(entry) {
+    try {
+      const key = 'orbit-attention-log';
+      const arr = JSON.parse(localStorage.getItem(key) || '[]');
+      arr.push(Object.assign({ ts: Date.now() }, entry));
+      while (arr.length > 60) arr.shift();
+      localStorage.setItem(key, JSON.stringify(arr));
+    } catch (e) {}
+  }
+
+  function getAttentionLogText() {
+    try {
+      const arr = JSON.parse(localStorage.getItem('orbit-attention-log') || '[]');
+      if (!arr.length) return 'Лог пуст. Запусти «проверка дня».';
+      return arr.slice(-15).map(e => {
+        return `[${e.date || ''}] проблем: ${e.issues || 0}\n` + (e.lines || []).join('\n');
+      }).join('\n\n——\n\n');
+    } catch (e) { return 'Ошибка чтения лога'; }
+  }
+
+
+  // ─── Audio blobs in IndexedDB (not localStorage) ───
+  const AUDIO_DB = 'orbit-audio-v1';
+  const AUDIO_STORE = 'clips';
+  function openAudioDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(AUDIO_DB, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(AUDIO_STORE)) db.createObjectStore(AUDIO_STORE, { keyPath: 'id' });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function saveAudioBlob(id, blob, mime) {
+    const db = await openAudioDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(AUDIO_STORE, 'readwrite');
+      tx.objectStore(AUDIO_STORE).put({ id, blob, mime: mime || blob.type || 'audio/webm', ts: Date.now() });
+      tx.oncomplete = () => resolve(id);
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  async function loadAudioBlob(id) {
+    if (!id) return null;
+    try {
+      const db = await openAudioDB();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(AUDIO_STORE, 'readonly');
+        const r = tx.objectStore(AUDIO_STORE).get(id);
+        r.onsuccess = () => resolve(r.result || null);
+        r.onerror = () => reject(r.error);
+      });
+    } catch (e) { return null; }
+  }
+  async function deleteAudioBlob(id) {
+    if (!id) return;
+    try {
+      const db = await openAudioDB();
+      const tx = db.transaction(AUDIO_STORE, 'readwrite');
+      tx.objectStore(AUDIO_STORE).delete(id);
+    } catch (e) {}
+  }
+  async function migrateBase64AudioToIdb() {
+    let changed = false;
+    for (const n of state.notes || []) {
+      if (n.audio && !n.audioId) {
+        try {
+          const mime = n.audioMime || 'audio/webm';
+          const bin = atob(n.audio);
+          const arr = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+          const blob = new Blob([arr], { type: mime });
+          const aid = n.id || uid();
+          await saveAudioBlob(aid, blob, mime);
+          n.audioId = aid;
+          n.audioMime = mime;
+          delete n.audio;
+          changed = true;
+        } catch (e) { console.warn('audio migrate', e); }
+      }
+    }
+    if (changed) save();
+  }
 
   // ─── IndexedDB: agent learning ───
   const IDB_NAME = 'orbit-agent-v1';
@@ -1441,9 +2137,12 @@
   }
   function lookupLearned(text) {
     const t = normalizeAgentText(text);
+    if (!t) return null;
     if (agentKnowledge[t]) return agentKnowledge[t];
     for (const [phrase, meaning] of Object.entries(agentKnowledge)) {
-      if (t.includes(phrase) || phrase.includes(t)) return meaning;
+      if (!phrase || phrase.length < 4) continue;
+      if (t === phrase) return meaning;
+      if (phrase.length >= 4 && t.length >= 4 && (t.includes(phrase) || phrase.includes(t))) return meaning;
     }
     return null;
   }
@@ -1497,15 +2196,7 @@
     { id: 'fill_day', cat: 'tools', words: ['заполни день','типовой день','стандартное расписание'], },
   ];
 
-  function normalizeAgentText(t) {
-    return (t || '').toLowerCase()
-      .replace(/ё/g, 'е')
-      .replace(/[«»""]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  function matchIntent(text) {
+    function matchIntent(text) {
     const t = normalizeAgentText(text);
     let best = null, bestScore = 0;
     for (const intent of AGENT_INTENTS) {
@@ -1522,39 +2213,550 @@
 
   function parseDayToken(str) {
     const dayMap = {
-      пн: 0, понедельник: 0, понед: 0,
-      вт: 1, вторник: 1,
-      ср: 2, среда: 2,
-      чт: 3, четверг: 3,
-      пт: 4, пятница: 4,
-      сб: 5, суббота: 5,
-      вс: 6, воскресенье: 6, воскр: 6,
-      сегодня: todayIndex(),
-      завтра: (todayIndex() + 1) % 7
+      понедельник: 0, понедельника: 0, понед: 0, пн: 0,
+      вторник: 1, вторника: 1, вт: 1,
+      среду: 2, среды: 2, среда: 2, ср: 2,
+      четверг: 3, четверга: 3, чт: 3,
+      пятницу: 4, пятницы: 4, пятница: 4, пт: 4,
+      субботу: 5, субботы: 5, суббота: 5, сб: 5,
+      воскресенье: 6, воскресенья: 6, воскр: 6, вс: 6,
+      сегодня: 'today',
+      завтра: 'tomorrow'
     };
     const t = normalizeAgentText(str);
-    for (const [k, v] of Object.entries(dayMap)) {
-      if (t.includes(k)) return typeof v === 'function' ? v : v;
+    const tokens = t.split(/[^a-zа-яё0-9]+/i).filter(Boolean);
+    const keys = Object.keys(dayMap).sort((a, b) => b.length - a.length);
+    for (const k of keys) {
+      if (tokens.includes(k)) {
+        const v = dayMap[k];
+        if (v === 'today') return todayIndex();
+        if (v === 'tomorrow') return (todayIndex() + 1) % 7;
+        return v;
+      }
+    }
+    for (const k of keys) {
+      if (k.length < 2) continue;
+      const re = new RegExp('(?:^|\\s)' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:\\s|$)');
+      if (re.test(t)) {
+        const v = dayMap[k];
+        if (v === 'today') return todayIndex();
+        if (v === 'tomorrow') return (todayIndex() + 1) % 7;
+        return v;
+      }
     }
     return null;
   }
 
-  function agentReply(text) {
+  function parseValidTime(str) {
+    const s = String(str || '').trim();
+    let h, mi;
+    let m = s.match(/^(\d{1,2})[:.\s](\d{2})$/);
+    if (m) { h = +m[1]; mi = +m[2]; }
+    else if (/^(\d{3,4})$/.test(s)) {
+      if (s.length === 3) { h = +s[0]; mi = +s.slice(1); }
+      else { h = +s.slice(0, 2); mi = +s.slice(2); }
+    } else {
+      m = s.match(/(\d{1,2})[:.\s](\d{2})/);
+      if (!m) return null;
+      h = +m[1]; mi = +m[2];
+    }
+    if (h > 23 || mi > 59 || h < 0 || mi < 0 || isNaN(h) || isNaN(mi)) return null;
+    return String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0');
+  }
+
+
+  function tryCalculate(raw) {
+    let s = (raw || '').trim().replace(/,/g, '.').replace(/×/g, '*').replace(/÷/g, '/');
+    s = s.replace(/^(посчитай|вычисли|сколько будет|калькулятор)\s+/i, '');
+    s = s.replace(/=\s*$/, '').trim();
+    if (!s || !/\d/.test(s)) return null;
+    const tokens = [];
+    let i = 0;
+    while (i < s.length) {
+      const ch = s[i];
+      if (/\s/.test(ch)) { i++; continue; }
+      if ('+-*/^()'.includes(ch)) { tokens.push(ch); i++; continue; }
+      if (/\d|\./.test(ch)) {
+        let j = i + 1;
+        while (j < s.length && /[\d.]/.test(s[j])) j++;
+        const num = s.slice(i, j);
+        if (!/^\d+(\.\d+)?$/.test(num)) return null;
+        tokens.push(num);
+        i = j;
+        continue;
+      }
+      return null;
+    }
+    if (!tokens.length) return null;
+    const prec = { '+': 1, '-': 1, '*': 2, '/': 2, '^': 3 };
+    const rightAssoc = { '^': true };
+    const output = [];
+    const ops = [];
+    let prevWasOp = true;
+    for (const t of tokens) {
+      if (/^\d/.test(t)) { output.push(parseFloat(t)); prevWasOp = false; continue; }
+      if (t === '(') { ops.push(t); prevWasOp = true; continue; }
+      if (t === ')') {
+        while (ops.length && ops[ops.length - 1] !== '(') output.push(ops.pop());
+        if (!ops.length) return null;
+        ops.pop();
+        prevWasOp = false;
+        continue;
+      }
+      if ('+-*/^'.includes(t)) {
+        if (t === '-' && prevWasOp) output.push(0);
+        while (ops.length && ops[ops.length - 1] !== '(') {
+          const top = ops[ops.length - 1];
+          const pTop = prec[top] || 0, pT = prec[t] || 0;
+          if (pTop > pT || (pTop === pT && !rightAssoc[t])) output.push(ops.pop());
+          else break;
+        }
+        ops.push(t);
+        prevWasOp = true;
+      }
+    }
+    while (ops.length) {
+      const op = ops.pop();
+      if (op === '(' || op === ')') return null;
+      output.push(op);
+    }
+    const stack = [];
+    for (const t of output) {
+      if (typeof t === 'number') { stack.push(t); continue; }
+      if (stack.length < 2) return null;
+      const b = stack.pop(), a = stack.pop();
+      let r;
+      if (t === '+') r = a + b;
+      else if (t === '-') r = a - b;
+      else if (t === '*') r = a * b;
+      else if (t === '/') { if (b === 0) return null; r = a / b; }
+      else if (t === '^') r = Math.pow(a, b);
+      else return null;
+      if (!isFinite(r)) return null;
+      stack.push(r);
+    }
+    if (stack.length !== 1) return null;
+    const rounded = Math.round(stack[0] * 1e10) / 1e10;
+    return { expr: s, result: rounded, steps: 'Выражение: ' + s + '\nРезультат: ' + rounded };
+  }
+
+  // ─── Agent usage presets ───
+  const USAGE_KEY = 'orbit-agent-usage-v1';
+  let agentUsage = {};
+  function loadAgentUsage() {
+    try { agentUsage = JSON.parse(localStorage.getItem(USAGE_KEY) || '{}') || {}; } catch (e) { agentUsage = {}; }
+  }
+  const AGENT_LOG_KEY = 'orbit-agent-debug-log';
+  let agentDebugLog = [];
+  function loadAgentDebugLog() {
+    try { agentDebugLog = JSON.parse(localStorage.getItem(AGENT_LOG_KEY) || '[]') || []; } catch (e) { agentDebugLog = []; }
+  }
+  function agentLog(event, detail) {
+    const entry = {
+      ts: new Date().toISOString(),
+      event: event,
+      detail: detail || '',
+      pending: agentPending ? (agentPending.type + '/' + (agentPending.step || '')) : null
+    };
+    agentDebugLog.push(entry);
+    if (agentDebugLog.length > 200) agentDebugLog = agentDebugLog.slice(-150);
+    try { localStorage.setItem(AGENT_LOG_KEY, JSON.stringify(agentDebugLog)); } catch (e) {}
+  }
+  function getAgentDebugLogText() {
+    if (!agentDebugLog.length) return 'Лог агента пуст.';
+    return agentDebugLog.slice(-80).map(e => {
+      return '[' + e.ts + '] ' + e.event + (e.pending ? ' (pending: ' + e.pending + ')' : '') + (e.detail ? '\n  ' + e.detail : '');
+    }).join('\n\n');
+  }
+
+  function trackUsage(id) {
+    if (!id) return;
+    agentUsage[id] = (agentUsage[id] || 0) + 1;
+    try { localStorage.setItem(USAGE_KEY, JSON.stringify(agentUsage)); } catch (e) {}
+  }
+  function topPresets(n) {
+    return Object.entries(agentUsage).sort((a, b) => b[1] - a[1]).filter(x => x[1] >= 2).slice(0, n || 6);
+  }
+
+  // Catalog of agent actions (категории — UX, не «колхоз»)
+  const AGENT_CATALOG = {
+    schedule: {
+      title: 'Расписание',
+      items: [
+        { id: 'add_lesson', label: 'Добавить урок', cmd: 'добавь урок' },
+        { id: 'del_day', label: 'Удалить день', cmd: 'удали день' },
+        { id: 'clear_sch', label: 'Очистить расписание', cmd: 'очисти расписание' },
+        { id: 'move_lesson', label: 'Перенести урок', cmd: 'перенеси урок' },
+        { id: 'show_mon', label: 'Расписание на пн', cmd: 'расписание на понедельник' },
+        { id: 'show_today', label: 'Уроки сегодня', cmd: 'уроки сегодня' },
+        { id: 'free_time', label: 'Свободное время', cmd: 'свободное время' },
+        { id: 'load_week', label: 'Нагрузка недели', cmd: 'нагрузка' },
+        { id: 'next_lesson', label: 'Сейчас / далее', cmd: 'сейчас' },
+        { id: 'subjects', label: 'Список предметов', cmd: 'предметы' }
+      ]
+    },
+    buses: {
+      title: 'Автобусы',
+      items: [
+        { id: 'bus_now', label: 'Автобусы сейчас', cmd: 'автобусы сейчас' },
+        { id: 'bus_home', label: 'Автобусы домой', cmd: 'автобусы домой' },
+        { id: 'bus_school', label: 'Автобусы в школу', cmd: 'автобусы в школу' },
+        { id: 'going_home', label: 'Еду домой', cmd: 'еду домой' },
+        { id: 'at_home', label: 'Я дома', cmd: 'я дома' },
+        { id: 'clear_bus', label: 'Очистить автобусы', cmd: 'очисти автобусы' }
+      ]
+    },
+    pack: {
+      title: 'Рюкзак и ДЗ',
+      items: [
+        { id: 'pack_today', label: 'Что взять сегодня', cmd: 'что взять сегодня' },
+        { id: 'pack_tom', label: 'Что взять завтра', cmd: 'что взять завтра' },
+        { id: 'pack_check', label: 'Проверить рюкзак', cmd: 'проверь рюкзак' },
+        { id: 'hw_list', label: 'Домашка', cmd: 'домашка' },
+        { id: 'hw_clear', label: 'Очистить ДЗ', cmd: 'очисти дз' },
+        { id: 'daily_check', label: 'Проверка дня', cmd: 'проверка дня' }
+      ]
+    },
+    people: {
+      title: 'Люди и каникулы',
+      items: [
+        { id: 'bday', label: 'Дни рождения', cmd: 'дни рождения' },
+        { id: 'holidays', label: 'Каникулы', cmd: 'каникулы' },
+        { id: 'hol_tasks', label: 'Задания на каникулы', cmd: 'задания на каникулы' }
+      ]
+    },
+    data: {
+      title: 'Данные',
+      items: [
+        { id: 'undo', label: 'Отменить шаг', cmd: 'отмена' },
+        { id: 'export', label: 'Экспорт JSON', cmd: 'экспорт' },
+        { id: 'stats', label: 'Статистика', cmd: 'статистика' },
+        { id: 'attention', label: 'Лог внимания', cmd: 'лог внимания' },
+        { id: 'agent_log', label: 'Лог агента (копировать)', cmd: 'лог агента' },
+        { id: 'help', label: 'Помощь', cmd: 'помощь' }
+      ]
+    },
+    calc: {
+      title: 'Калькулятор',
+      items: [
+        { id: 'calc_hint', label: 'Как считать?', cmd: 'калькулятор' }
+      ]
+    },
+    files: {
+      title: 'Файлы',
+      items: [
+        { id: 'import_help', label: 'Как импортировать', cmd: 'импорт файл' },
+        { id: 'export', label: 'Экспорт JSON', cmd: 'экспорт' },
+        { id: 'example', label: 'Загрузить пример', cmd: 'загрузи пример' },
+        { id: 'template', label: 'Скачать шаблон Excel', cmd: 'скачать шаблон' }
+      ]
+    },
+    control: {
+      title: 'Управление',
+      items: [
+        { id: 'tab_today', label: 'Открыть Сегодня', cmd: 'открой сегодня' },
+        { id: 'tab_lessons', label: 'Открыть Уроки', cmd: 'открой уроки' },
+        { id: 'tab_buses', label: 'Открыть Автобусы', cmd: 'открой автобусы' },
+        { id: 'tab_pack', label: 'Открыть Рюкзак', cmd: 'открой рюкзак' },
+        { id: 'tab_tasks', label: 'Открыть Задачи', cmd: 'открой задачи' },
+        { id: 'theme', label: 'Сменить тему', cmd: 'смени тему' },
+        { id: 'undo', label: 'Отменить', cmd: 'отмена' },
+        { id: 'agent_log', label: 'Лог агента', cmd: 'лог агента' },
+        { id: 'daily', label: 'Проверка дня', cmd: 'проверка дня' }
+      ]
+    }
+  };
+
+
+  function allSubjectsList() {
+    const custom = (state.settings && state.settings.customSubjects) || [];
+    const fromLessons = state.lessons.map(l => l.subject).filter(Boolean);
+    return [...new Set([...SUBJECTS, ...custom, ...fromLessons])];
+  }
+  function rememberSubject(name) {
+    if (!name) return;
+    if (!state.settings.customSubjects) state.settings.customSubjects = [];
+    if (!SUBJECTS.includes(name) && !state.settings.customSubjects.includes(name)) {
+      state.settings.customSubjects.push(name);
+      save();
+    }
+  }
+  function dayChoiceButtons() {
+    return DAYS.map((label, i) => ({ label: label, cmd: DAYS_NA[i] }));
+  }
+  function timeChoiceButtons(day) {
+    const base = ['08:30', '09:20', '10:20', '11:15', '12:05', '13:00', '14:00', '15:00'];
+    let sug = null;
+    try { sug = suggestNextStart(day); } catch (e) {}
+    const times = sug ? [sug].concat(base.filter(t => t !== sug)) : base;
+    return times.slice(0, 8).map(t => ({ label: t, cmd: t }));
+  }
+  function subjectChoiceButtons() {
+    return allSubjectsList().slice(0, 24).map(s => ({ label: s, cmd: s }));
+  }
+
+
+  async function runAgentScript(steps) {
+    const results = [];
+    const max = Math.min(steps.length, 30);
+    for (let i = 0; i < max; i++) {
+      const step = (steps[i] || '').trim();
+      if (!step) continue;
+      try {
+        // Lightweight direct actions without double-pushing user msgs
+        const lower = normalizeAgentText(step);
+        if (/проверка дня/.test(lower)) {
+          results.push((i + 1) + '. ' + dailyCheckReport().split('\n')[0]);
+        } else if (/автобус/.test(lower)) {
+          let mode = /дом|домой/.test(lower) ? 'home' : (/школ/.test(lower) ? 'school' : 'all');
+          results.push((i + 1) + '. ' + agentBusesReply(mode).split('\n')[0]);
+        } else if (/открой/.test(lower)) {
+          agentHistory.pop(); // avoid noise
+          // reuse single command path via temporary history
+          const before = agentHistory.length;
+          agentReply(step);
+          const last = agentHistory[agentHistory.length - 1];
+          results.push((i + 1) + '. ' + (last && last.role === 'bot' ? last.text.split('\n')[0] : step));
+          // keep only one bot summary later
+        } else if (/смени.*тем/.test(lower)) {
+          toggleTheme();
+          results.push((i + 1) + '. Тема: ' + (state.settings.theme || ''));
+        } else if (/экспорт/.test(lower)) {
+          exportJsonFile();
+          results.push((i + 1) + '. Экспорт');
+        } else if (/я дома/.test(lower)) {
+          atHome = true; goingHome = false;
+          results.push((i + 1) + '. Статус: дома');
+        } else if (/еду домой|я домой/.test(lower)) {
+          goingHome = true; atHome = false;
+          results.push((i + 1) + '. Статус: еду домой');
+        } else {
+          results.push((i + 1) + '. «' + step + '» — выполнено как команда');
+          agentReply(step);
+        }
+      } catch (e) {
+        results.push((i + 1) + '. Ошибка: ' + (e.message || e));
+      }
+    }
+    return results;
+  }
+
+  function agentReply(text, opts) {
+    opts = opts || {};
     const raw = (text || '').trim();
     if (!raw) return;
     agentHistory.push({ role: 'user', text: raw });
+    try { agentLog('user', raw); } catch (e) {}
     const lower = normalizeAgentText(raw);
     let reply = '';
     const dayName = d => DAYS_FULL[d] || '?';
 
+    // Калькулятор и быстрые команды (до learned/pending)
+    const calc = tryCalculate(raw);
+    if (calc) {
+      agentHistory.push({ role: 'bot', text: calc.steps });
+      trackUsage('calc');
+      renderAgent();
+      return;
+    }
+    if (/скрипт\s*помощь|как\s*писать\s*скрипт/.test(lower)) {
+      agentHistory.push({ role: 'bot', text: 'Скрипт — несколько команд через «;» (до 30):\nскрипт: проверка дня; автобусы домой; открой сегодня\nГотовые: категория «Скрипты».' });
+      renderAgent(); return;
+    }
+    if (/^калькулятор$/.test(lower)) {
+      agentHistory.push({ role: 'bot', text: 'Напиши пример и «=»:\n• 12*8=\n• (3+5)*2=\n• 2^8=\nЧисла и + − * / ( ) ^' });
+      renderAgent();
+      return;
+    }
+    if (/проверка дня|проверь день|ежедневн/.test(lower)) {
+      agentHistory.push({ role: 'bot', text: dailyCheckReport() });
+      trackUsage('daily_check');
+      renderAgent();
+      return;
+    }
+    if (/проверь рюкзак|проверка рюкзак|сборк[аи] портфел|всё ли сложен/.test(lower)) {
+      agentHistory.push({ role: 'bot', text: dailyCheckReport() });
+      trackUsage('pack_check');
+      renderAgent();
+      return;
+    }
+    if (/лог внимания|журнал вниман/.test(lower)) {
+      agentHistory.push({ role: 'bot', text: getAttentionLogText() });
+      renderAgent();
+      return;
+    }
+    if (/лог агента|debug.?log|журнал агента|экспорт.?лог/.test(lower)) {
+      const text = getAgentDebugLogText();
+      agentHistory.push({
+        role: 'bot',
+        text: 'Лог агента (последние записи). Можно скопировать и отправить для исправлений:\n\n' + text.slice(0, 3500),
+        copyPrompt: text
+      });
+      renderAgent();
+      return;
+    }
+    if (/очисти лог агента|очистить лог агента/.test(lower)) {
+      agentDebugLog = [];
+      try { localStorage.removeItem(AGENT_LOG_KEY); } catch (e) {}
+      agentHistory.push({ role: 'bot', text: 'Лог агента очищен.' });
+      renderAgent();
+      return;
+    }
+    if (/^каникул/.test(lower) || /задания на каникул/.test(lower)) {
+      if (!state.holidays.length) {
+        agentHistory.push({ role: 'bot', text: 'Каникул нет — добавь в Профиль → Каникулы.' });
+      } else {
+        const lines = state.holidays.map(h => {
+          const tasks = h.tasks || [];
+          const done = tasks.filter(t => t.done).length;
+          return `• ${h.name}: ${h.start || ''}–${h.end || ''}` + (tasks.length ? ` · ${done}/${tasks.length} заданий` : '');
+        });
+        agentHistory.push({ role: 'bot', text: 'Каникулы:\n' + lines.join('\n') });
+      }
+      renderAgent();
+      return;
+    }
+    if (/расписание на |уроки на |что на /.test(lower) || (/^уроки /.test(lower) && parseDayToken(lower) != null)) {
+      const d = parseDayToken(lower) ?? todayIndex();
+      const list = state.lessons.filter(l => l.day === d).sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+      if (!list.length) {
+        agentHistory.push({ role: 'bot', text: 'На ' + dayNa(d) + ' уроков нет.' });
+      } else {
+        agentHistory.push({
+          role: 'bot',
+          text: '📅 Расписание на ' + dayNa(d) + ':',
+          card: {
+            type: 'schedule',
+            items: list.map(l => ({
+              time: (l.start || '?') + '–' + (l.end || '?'),
+              title: l.subject || '',
+              meta: [l.room, l.teacher].filter(Boolean).join(' · ')
+            }))
+          }
+        });
+      }
+      try { agentLog('bot', 'schedule ' + dayNa(d)); } catch (e) {}
+      trackUsage('show_day');
+      renderAgent();
+      return;
+    }
+    if (/удали(ть)?\s+расписание\s+/.test(lower)) {
+      const d = parseDayToken(lower);
+      if (d != null) {
+        const before = state.lessons.length;
+        state.lessons = state.lessons.filter(l => l.day !== d);
+        save();
+        agentHistory.push({ role: 'bot', text: `Удалены уроки ${dayPrep(d)}: ${before - state.lessons.length} шт.` });
+      } else {
+        agentPending = { type: 'delete_pick' };
+        agentHistory.push({ role: 'bot', text: 'Какой день очистить?', choices: DAYS.map((name, i) => ({ label: name, cmd: 'удали расписание на ' + DAYS_NA[i] })) });
+      }
+      renderAgent();
+      return;
+    }
+    if (/qr\s*приложен|поделиться\s*приложен|ссылка\s*на\s*приложен/.test(lower)) {
+      switchTab('profile');
+      profileTab = 'qr';
+      renderProfile();
+      setTimeout(() => document.getElementById('qr-gen-app')?.click(), 200);
+      agentHistory.push({ role: 'bot', text: 'Открыл QR приложения — можно отсканировать на другом телефоне.' });
+      renderAgent(); return;
+    }
+    if (/^экспорт$/.test(lower)) {
+      try { exportJsonFile(); agentHistory.push({ role: 'bot', text: 'JSON выгружен.' }); }
+      catch (e) { agentHistory.push({ role: 'bot', text: 'Не удалось выгрузить.' }); }
+      renderAgent();
+      return;
+    }
+
+    if (/^открой\s+(сегодня|уроки|канбан|рюкзак|автобус|агент|задачи|дневник|заметки|профиль)/.test(lower) || /^вкладка\s+/.test(lower)) {
+      const map = {
+        сегодня: 'today', уроки: 'schedule', канбан: 'kanban', рюкзак: 'pack',
+        автобус: 'buses', автобусы: 'buses', агент: 'agent', задачи: 'tasks',
+        дневник: 'diary', заметки: 'notes', профиль: 'profile', ещё: 'profile'
+      };
+      let tab = null;
+      for (const [k, v] of Object.entries(map)) {
+        if (lower.includes(k)) { tab = v; break; }
+      }
+      if (tab) {
+        switchTab(tab);
+        agentHistory.push({ role: 'bot', text: 'Открыл вкладку.' });
+        renderAgent();
+        return;
+      }
+    }
+    if (/смени(ть)?\s*тему|переключи\s*тему|тёмн|светл/.test(lower)) {
+      toggleTheme();
+      agentHistory.push({ role: 'bot', text: 'Тема переключена: ' + (state.settings.theme || 'dark') });
+      renderAgent();
+      return;
+    }
+    if (/загрузи(ть)?\s*пример|пример\s*данных/.test(lower)) {
+      loadExample();
+      agentHistory.push({ role: 'bot', text: 'Пример данных загружен.' });
+      renderAgent();
+      return;
+    }
+    if (/скачать\s*шаблон|шаблон\s*excel/.test(lower)) {
+      const a = document.createElement('a');
+      a.href = 'templates/orbit-import-template.xlsx';
+      a.download = 'orbit-import-template.xlsx';
+      a.click();
+      agentHistory.push({ role: 'bot', text: 'Скачиваю Excel-шаблон. Заполни и перетащи файл в агент.' });
+      renderAgent();
+      return;
+    }
+    if (/импорт\s*файл|как\s*импортир|drag/.test(lower)) {
+      agentHistory.push({ role: 'bot', text: 'Перетащи файл в зону над чатом или нажми «📎 Файл».\nПоддержка: JSON (база Орбиты), Excel, CSV, TXT.\nМожно несколько файлов сразу.' });
+      renderAgent();
+      return;
+    }
+
+    // Multi-step scripts: "скрипт: проверка дня; автобусы домой; открой сегодня"
+    if (/^скрипт\s*:|^macro\s*:|^batch\s*:/i.test(raw) || (raw.includes(';') && raw.split(';').length >= 2 && raw.length < 500)) {
+      let body = raw.replace(/^скрипт\s*:|^macro\s*:|^batch\s*:/i, '').trim();
+      const steps = body.split(/;|\n|→|->/).map(s => s.trim()).filter(Boolean).slice(0, 30);
+      if (steps.length >= 2) {
+        agentHistory.push({ role: 'bot', text: 'Запускаю скрипт (' + steps.length + ' шагов)…' });
+        renderAgent();
+        const results = [];
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i];
+          const lower = normalizeAgentText(step);
+          try {
+            if (/проверка дня/.test(lower)) results.push((i+1) + '. Проверка: OK');
+            else if (/автобус/.test(lower)) {
+              const mode = /дом|домой/.test(lower) ? 'home' : (/школ/.test(lower) ? 'school' : 'all');
+              results.push((i+1) + '. ' + agentBusesReply(mode).split('\n').slice(0, 2).join(' | '));
+            } else if (/открой/.test(lower)) {
+              const map = { сегодня:'today', уроки:'schedule', автобус:'buses', автобусы:'buses', рюкзак:'pack', задачи:'tasks', агент:'agent', профиль:'profile', канбан:'kanban' };
+              let tab = null;
+              for (const [k,v] of Object.entries(map)) if (lower.includes(k)) { tab = v; break; }
+              if (tab) { switchTab(tab); results.push((i+1) + '. Вкладка ' + tab); }
+              else results.push((i+1) + '. ' + step);
+            } else if (/смени.*тем|тему/.test(lower)) { toggleTheme(); results.push((i+1) + '. Тема'); }
+            else if (/экспорт/.test(lower)) { exportJsonFile(); results.push((i+1) + '. Экспорт'); }
+            else if (/я дома/.test(lower)) { atHome = true; goingHome = false; results.push((i+1) + '. Дома'); }
+            else if (/еду домой|я домой/.test(lower)) { goingHome = true; atHome = false; results.push((i+1) + '. Еду домой'); }
+            else if (/отмен/.test(lower)) { undoLast(1); results.push((i+1) + '. Отмена'); }
+            else { results.push((i+1) + '. «' + step + '»'); }
+          } catch (e) { results.push((i+1) + '. ошибка'); }
+        }
+        agentHistory.push({ role: 'bot', text: 'Скрипт готов:\n' + results.join('\n') });
+        renderAgent();
+        trackUsage('script');
+        return;
+      }
+    }
+
     // 0) Learned knowledge from IndexedDB
-    const learned = lookupLearned(raw);
+    const learned = (!opts.fromLearned) ? lookupLearned(raw) : null;
     if (learned && !agentPending) {
       // If learned meaning looks like a command, run it
       if (/^(добавь|удали|перенес|очист|покажи|свободн)/i.test(learned)) {
-        agentHistory.pop(); // remove duplicate user push - will re-push in recursive
-        agentHistory.pop();
-        return agentReply(learned);
+        agentHistory.pop(); // remove this user push; will re-push inside agentReply
+        return agentReply(learned, { fromLearned: true });
       }
       reply = learned;
       agentHistory.push({ role: 'bot', text: reply });
@@ -1571,57 +2773,115 @@
         return agentReply(raw);
       }
       const p = agentPending;
-      if (/отмена|cancel|стоп/.test(lower)) {
+      if (/^(отмена|cancel|стоп)([!.\s]*)$/i.test(lower)) {
+        agentPending = null;
+        reply = 'Отменено.';
+      } else if (/^(пропустить|skip|дальше|без)([!.\s]*)$/i.test(lower)) {
+        if (p.type === 'add_lesson' && p.step === 'time') {
+          // skip room/teacher — finalize not applicable; ask time still required
+          reply = 'Время нужно указать — выбери кнопку или напиши ЧЧ:ММ.';
+        } else if (p.type === 'learn') {
+          agentPending = null;
+          reply = 'Пропущено, не запомнил.';
+        } else {
+          reply = 'Это поле нужно заполнить. Или «отмена».';
+        }
+      } else if (/^(повтори|ещё раз|еще раз)([!.\s]*)$/i.test(lower)) {
+        const last = [...agentHistory].reverse().find(m => m.role === 'bot' && m.text && !m.text.startsWith('🎯'));
+        if (last) {
+          agentHistory.push({ role: 'bot', text: last.text, choices: last.choices, quickReplies: last.quickReplies, yesNo: last.yesNo, subjects: last.subjects });
+          renderAgent(); return;
+        }
+        reply = 'Нечего повторять.';
+      } else if (/^(назад|вернись)([!.\s]*)$/i.test(lower)) {
+        if (p.type === 'add_lesson') {
+          if (p.step === 'time') { p.step = 'day'; delete p.day;
+            agentHistory.push({ role: 'bot', text: 'Ок, снова день для «' + (p.subject||'') + '».', choices: dayChoiceButtons() });
+            renderAgent(); return;
+          }
+          if (p.step === 'day') { p.step = 'subject'; delete p.subject;
+            agentHistory.push({ role: 'bot', text: 'Какой предмет?', choices: subjectChoiceButtons() });
+            renderAgent(); return;
+          }
+        }
+        if (p.type === 'add_club') {
+          if (p.step === 'time') { p.step = 'day';
+            agentHistory.push({ role: 'bot', text: 'День для кружка?', choices: dayChoiceButtons() });
+            renderAgent(); return;
+          }
+          if (p.step === 'day') { p.step = 'name';
+            agentHistory.push({ role: 'bot', text: 'Как называется кружок?' });
+            renderAgent(); return;
+          }
+        }
         agentPending = null;
         reply = 'Отменено.';
       } else if (p.type === 'add_lesson') {
         if (p.step === 'subject') {
-          const subj = resolveSubject(raw);
-          if (!subj) { reply = 'Не понял предмет. Напиши название или сокращение (мат, физра, рус…).'; }
-          else {
-            p.subject = subj;
-            p.step = 'day';
-            reply = `«${subj}». На какой день? (пн…вс / сегодня / завтра)\nИли сразу: «пн 8:30»`;
+          let subj = resolveSubject(raw);
+          if (!subj && raw.trim().length >= 2 && !/^(отмена|нет)$/i.test(raw.trim())) {
+            subj = raw.trim().replace(/^./, c => c.toUpperCase());
+            rememberSubject(subj);
           }
+          if (!subj) {
+            agentHistory.push({ role: 'bot', text: 'Какой предмет? Выбери кнопку или напиши свой — запомню.', choices: subjectChoiceButtons() });
+            renderAgent();
+            return;
+          }
+          p.subject = subj;
+          rememberSubject(subj);
+          p.step = 'day';
+          agentHistory.push({
+            role: 'bot',
+            text: '«' + subj + '». На какой день?',
+            choices: dayChoiceButtons().concat([{ label: 'Сегодня', cmd: 'сегодня' }, { label: 'Завтра', cmd: 'завтра' }])
+          });
+          renderAgent();
+          return;
         } else if (p.step === 'day') {
-          // try "пн 8:30" or just day
           const day = parseDayToken(lower);
           const tm = lower.match(/(\d{1,2})[:\.](\d{2})/);
           if (day != null && tm) {
-            const startT = String(+tm[1]).padStart(2,'0') + ':' + tm[2];
-            const endT = calcEndFromStart(startT);
-            const les = { id: uid(), day, subject: p.subject, start: startT, end: endT, room: '', teacher: '', items: [] };
-            const res = addLessonSafe(les);
-            if (!res.ok) {
-              agentPending = { type: 'add_conflict', lesson: les, conflicts: res.conflicts };
-              reply = res.message;
+            const startT = parseValidTime(tm[1] + ':' + tm[2]);
+            if (!startT) {
+              reply = 'Некорректное время (нужно ЧЧ:ММ, часы 0–23, минуты 0–59).';
             } else {
-              agentPending = null;
-              reply = `Добавил «${p.subject}» на ${dayName(day)} ${startT}–${endT}.`;
+              const endT = calcEndFromStart(startT);
+              const les = { id: uid(), day: day, subject: p.subject, start: startT, end: endT, room: '', teacher: '', items: [] };
+              const res = addLessonSafe(les);
+              if (!res.ok) {
+                agentPending = { type: 'add_conflict', lesson: les, conflicts: res.conflicts };
+                reply = res.message;
+              } else {
+                agentPending = null;
+                reply = 'Добавил «' + p.subject + '» ' + dayPrep(day) + ' ' + startT + '–' + endT + '.';
+              }
             }
           } else if (day != null) {
-            p.day = day; p.step = 'time';
-            const sug = suggestNextStart(day);
-            reply = `День: ${dayName(day)}. Во сколько начало? (например ${sug})\nМожно просто нажать время или написать «${sug}»`;
-          } else if (tm && p.day != null) {
-            const startT = String(+tm[1]).padStart(2,'0') + ':' + tm[2];
-            const endT = calcEndFromStart(startT);
-            const les = { id: uid(), day: p.day, subject: p.subject, start: startT, end: endT, room: '', teacher: '', items: [] };
-            const res = addLessonSafe(les);
-            if (!res.ok) {
-              agentPending = { type: 'add_conflict', lesson: les, conflicts: res.conflicts };
-              reply = res.message;
-            } else {
-              agentPending = null;
-              reply = `Добавил «${p.subject}» на ${dayName(p.day)} ${startT}–${endT}.`;
-            }
+            p.day = day;
+            p.step = 'time';
+            agentHistory.push({
+              role: 'bot',
+              text: 'Ок, ' + dayPrep(day) + '. Во сколько начало?',
+              choices: timeChoiceButtons(day).concat([{ label: 'Своё время', cmd: 'своё время' }])
+            });
+            renderAgent();
+            return;
           } else {
-            reply = 'Укажи день: пн, вт, ср… или «сегодня». Можно сразу «пн 8:30».';
+            agentHistory.push({ role: 'bot', text: 'Выбери день:', choices: dayChoiceButtons() });
+            renderAgent();
+            return;
           }
         } else if (p.step === 'time') {
-          const tm = lower.match(/(\d{1,2})[:\.](\d{2})/);
-          if (tm) {
-            const startT = String(+tm[1]).padStart(2,'0') + ':' + tm[2];
+          if (/своё|другое|сам/.test(lower) && !/\d/.test(lower)) {
+            reply = 'Напиши время, например 14:30';
+          } else {
+            const startT = parseValidTime(raw) || parseValidTime(lower);
+            if (!startT) {
+              agentHistory.push({ role: 'bot', text: 'Некорректное время. Выбери кнопку или напиши ЧЧ:ММ (часы 0–23).', choices: timeChoiceButtons(p.day) });
+              renderAgent();
+              return;
+            }
             const endT = calcEndFromStart(startT);
             const les = { id: uid(), day: p.day, subject: p.subject, start: startT, end: endT, room: '', teacher: '', items: [] };
             const res = addLessonSafe(les);
@@ -1630,11 +2890,47 @@
               reply = res.message;
             } else {
               agentPending = null;
-              reply = `Добавил «${p.subject}» на ${dayName(p.day)} ${startT}–${endT}.`;
+              reply = 'Готово: «' + p.subject + '» ' + dayPrep(p.day) + ' ' + startT + '–' + endT + '.';
             }
-          } else {
-            reply = 'Напиши время начала, например 8:30';
           }
+        }
+      } else if (p.type === 'add_club') {
+        if (p.step === 'name') {
+          const name = raw.trim();
+          if (name.length < 2) {
+            reply = 'Как называется кружок?';
+          } else {
+            p.name = name;
+            p.step = 'day';
+            agentHistory.push({ role: 'bot', text: '«' + name + '». В какой день?', choices: dayChoiceButtons() });
+            renderAgent();
+            return;
+          }
+        } else if (p.step === 'day') {
+          const day = parseDayToken(lower);
+          if (day == null) {
+            agentHistory.push({ role: 'bot', text: 'Выбери день:', choices: dayChoiceButtons() });
+            renderAgent();
+            return;
+          }
+          p.day = day;
+          p.step = 'time';
+          agentHistory.push({ role: 'bot', text: 'Кружок ' + dayPrep(day) + '. Время начала?', choices: timeChoiceButtons(day) });
+          renderAgent();
+          return;
+        } else if (p.step === 'time') {
+          const startT = parseValidTime(raw) || parseValidTime(lower);
+          if (!startT) {
+            agentHistory.push({ role: 'bot', text: 'Некорректное время. Выбери или напиши ЧЧ:ММ:', choices: timeChoiceButtons(p.day) });
+            renderAgent();
+            return;
+          }
+          const sMin = parseTime(startT);
+          const endClub = sMin != null ? formatTime(sMin + 90) : (typeof calcEndFromStart === 'function' ? calcEndFromStart(startT) : startT);
+          state.clubs.push({ id: uid(), day: p.day, name: p.name, start: startT, end: endClub, place: '', teacher: '', items: [], notes: '' });
+          save();
+          agentPending = null;
+          reply = 'Кружок «' + p.name + '» ' + dayPrep(p.day) + ' ' + startT + '–' + endClub + '.';
         }
       } else if (p.type === 'confirm_wipe') {
         if (/^(да|yes|удали|подтверж)/i.test(lower)) {
@@ -1686,10 +2982,23 @@
           reply = 'Напиши «заменить», «другое время» или «отмена».';
         }
       } else if (p.type === 'learn') {
-        // user explains what previous phrase meant
-        saveAgentKnowledge(p.phrase, raw);
-        agentPending = null;
-        reply = `Запомнил: «${p.phrase}» → «${raw}». В следующий раз пойму. Можно сразу выполнить — напиши эту команду.`;
+        if (isAbortPendingCommand(lower) || /^(привет|здравств|хай|hello|отмена|нет)$/i.test(lower)) {
+          agentPending = null;
+          agentHistory.pop();
+          return agentReply(raw);
+        }
+        if (/^(добавь|удали|перенес|очист|покажи|открой|автобус|проверка|лог)/i.test(lower) || resolveSubject(raw)) {
+          agentPending = null;
+          agentHistory.pop();
+          return agentReply(raw);
+        }
+        if (raw.trim().length < 2) {
+          reply = 'Напиши, что означала фраза, или «отмена».';
+        } else {
+          saveAgentKnowledge(p.phrase, raw);
+          agentPending = null;
+          reply = 'Запомнил: «' + p.phrase + '» → «' + raw + '». В следующий раз пойму.';
+        }
       } else if (p.type === 'ai_apply') {
         // user pastes response from external neural net - try to execute as command or store
         agentPending = null;
@@ -1754,7 +3063,7 @@
     }
 
     // bare subject word while not pending - offer to add
-    if (subjectOnly && raw.length < 40 && !/удали|очист|убери|перенес|покажи|сколько|что|когда|помощь|добавь|нагрузк|свободн|статистик|я домой|закончил|привет|здравств|хай|hello|спасибо|автобус|маршрут|домашк|др|день рожден/.test(lower)) {
+    if (subjectOnly && raw.length < 40 && !/удали|очист|убери|перенес|покажи|сколько|что|когда|помощь|добавь|нагрузк|свободн|статистик|я домой|закончил|привет|здравств|хай|hello|спасибо|автобус|маршрут|домашк|др|день рожден/.test(lower)) {
       agentPending = { type: 'add_lesson', step: 'day', subject: subjectOnly };
       reply = `Добавить «${subjectOnly}»?\nНапиши день и время: «пн 8:30» или «отмена»`;
       agentHistory.push({ role: 'bot', text: reply });
@@ -1781,10 +3090,12 @@
 
     } else if (/удали\s*все\s*автобус|очисти\s*автобус|очисти\s*список\s*автобус/.test(lower)) {
       agentPending = { type: 'confirm_wipe', kind: 'buses' };
-      reply = `Удалить все автобусы (${state.buses.length})? Напиши «да» или «отмена».`;
+      agentHistory.push({ role: 'bot', text: 'Удалить все автобусы (' + state.buses.length + ')?', yesNo: true });
+      renderAgent(); return;
     } else if (/удали\s*всех\s*людей|очисти\s*людей/.test(lower)) {
       agentPending = { type: 'confirm_wipe', kind: 'people' };
-      reply = `Удалить всех людей (${state.people.length})? Напиши «да» или «отмена».`;
+      agentHistory.push({ role: 'bot', text: 'Удалить всех людей (' + state.people.length + ')?', yesNo: true });
+      renderAgent(); return;
     } else if (/удали\s*все\s*кружк/.test(lower)) {
       const n = state.clubs.length; state.clubs = []; save();
       reply = `Удалено кружков: ${n}.`;
@@ -1808,7 +3119,17 @@
         reply = `С ${dayName(d)} удалено уроков: ${before - state.lessons.length}.`;
       } else {
         agentPending = { type: 'delete_pick' };
-        reply = 'Что удалить?\n• день: «пн» или «понедельник»\n• несколько: «пн вт ср»\n• «всю неделю» — все уроки\n• «расписание» — уроки+кружки+события\n• «отмена»';
+        agentHistory.push({
+          role: 'bot',
+          text: 'Что удалить?',
+          choices: dayChoiceButtons().concat([
+            { label: 'Всю неделю', cmd: 'всю неделю' },
+            { label: 'Всё расписание', cmd: 'расписание' },
+            { label: 'Отмена', cmd: 'отмена' }
+          ])
+        });
+        renderAgent();
+        return;
       }
 
     } else if (/удали\s*(все\s*)?уроки?\s+/.test(lower)) {
@@ -1893,10 +3214,15 @@
         const day = parseDayToken(m[2]);
         let start = m[3].length === 4 ? '0' + m[3] : m[3];
         let end = m[4] ? (m[4].length === 4 ? '0' + m[4] : m[4]) : addMinutesToTime(start, 90);
-        state.clubs.push({ id: uid(), day, name: m[1].trim().replace(/^./, c => c.toUpperCase()), start, end, place: '', teacher: '', items: [], notes: '' });
+        state.clubs.push({ id: uid(), day: day, name: m[1].trim(), start: start, end: end, place: '', teacher: '', items: [], notes: '' });
         save();
-        reply = `Кружок добавлен на ${dayName(day)} ${start}–${end}.`;
-      } else reply = 'Формат: «добавь кружок Робототехника ср 15:00-16:30»';
+        reply = 'Кружок «' + m[1].trim() + '» ' + dayPrep(day) + ' ' + start + '–' + end + '.';
+      } else {
+        agentPending = { type: 'add_club', step: 'name' };
+        agentHistory.push({ role: 'bot', text: 'Как называется кружок?' });
+        renderAgent();
+        return;
+      }
 
     } else if (/добавь?\s+событие|добавить\s+событие/.test(lower)) {
       const m = lower.match(/добавь?\s+событие\s+(.+?)\s+(пн|вт|ср|чт|пт|сб|вс|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье)\s+(\d{1,2}:\d{2})(?:\s*[-–]\s*(\d{1,2}:\d{2}))?/i);
@@ -1940,10 +3266,25 @@
     } else if (/покажи\s*уроки|какие\s*уроки|расписание\s*на|уроки\s*в|что\s*сегодня|что\s*завтра/.test(lower)) {
       const d = parseDayToken(lower) ?? todayIndex();
       const list = state.lessons.filter(l => l.day === d).sort((a, b) => (a.start || '').localeCompare(b.start || ''));
-      if (!list.length) reply = `На ${dayName(d)} уроков нет.`;
-      else reply = `${dayName(d)}:\n` + list.map(l => `• ${l.start || '?'}–${l.end || '?'} ${l.subject}`).join('\n');
+      if (!list.length) reply = 'На ' + dayName(d) + ' уроков нет.';
+      else {
+        agentHistory.push({
+          role: 'bot',
+          text: '📅 Расписание на ' + dayNa(d) + ':',
+          card: {
+            type: 'schedule',
+            items: list.map(l => ({
+              time: (l.start || '?') + '–' + (l.end || '?'),
+              title: l.subject || '',
+              meta: [l.room, l.teacher].filter(Boolean).join(' · ')
+            }))
+          }
+        });
+        renderAgent();
+        return;
+      }
 
-    } else if (/следующий урок|какой сейчас|сейчас урок|что дальше|ближайший/.test(lower)) {
+    } else if (/^(сейчас|далее)([!.\s]*)$/i.test(lower) || /следующий урок|какой сейчас|сейчас урок|что дальше|ближайший урок|что сейчас/.test(lower)) {
       const day = todayIndex();
       const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
       const all = state.lessons.filter(l => l.day === day).map(x => ({ ...x, title: x.subject, s: parseTime(x.start), e: parseTime(x.end) }))
@@ -2000,6 +3341,11 @@
     } else if (/^удали$|^удалить$|^удали\s*уроки$/.test(lower)) {
       agentPending = { type: 'delete_pick' };
       reply = 'Что удалить?\n• день: «пн»\n• несколько: «пн вт ср»\n• «всю неделю»\n• «расписание» — всё\n• «отмена»';
+    } else if (/^отмен|undo|назад\s*\d*|верн[иу]\s*шаг/.test(lower)) {
+      const m = lower.match(/(\d+)/);
+      const steps = m ? Math.min(5, Math.max(1, +m[1])) : 1;
+      undoLast(steps);
+      reply = undoStack.length ? `Готово. Ещё можно отменить шагов: ${undoStack.length}.` : 'Отменено. История пуста.';
     } else if (/я дома|уже дома|приехал домой/.test(lower)) {
       atHome = true; goingHome = false;
       const now = new Date();
@@ -2015,59 +3361,276 @@
       goingHome = false; atHome = false;
       reply = 'Снова обычный день.';
     } else if (/автобус|рейс|маршрут/.test(lower)) {
-      const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-      let mode = /дом|домой|рейзин/.test(lower) ? 'home' : (/школ/.test(lower) ? 'school' : 'all');
+      let mode = 'all';
+      if (/дом|домой|рейзин|из школы/.test(lower)) mode = 'home';
+      else if (/школ|в школу|на учёбу/.test(lower)) mode = 'school';
       const numM = lower.match(/№?\s*(\d{2,4})/);
-      let buses = getRelevantBuses(nowMin, mode === 'all' ? 'all' : mode, 8);
-      if (numM) buses = state.buses.filter(b => (b.number||'') === numM[1] && (parseTime(b.time)||0) >= nowMin - 2).sort((a,b)=>(a.time||'').localeCompare(b.time||'')).slice(0, 8);
-      if (!buses.length) reply = 'Нет актуальных автобусов. Добавь во вкладке «Автобус».';
-      else reply = 'Автобусы:\n' + buses.map(b => {
-        const t = parseTime(b.time); const walk = Number(b.walkMin)||0;
-        const leave = t != null ? t - walk - nowMin : null;
-        const route = (b.from && b.to) ? `${b.from} → ${b.to}` : (b.to||b.destination||'');
-        return `• №${b.number} в ${b.time}${leave!=null?', выйти через '+formatDurationMin(leave):''} · ${route}`;
-      }).join('\n');
-    } else if (/день\s*рожден|др|именин/.test(lower)) {
-      const today = new Date();
-      const md = (d) => { const x = new Date(d); return (x.getMonth()+1)*100 + x.getDate(); };
-      const tmd = (today.getMonth()+1)*100 + today.getDate();
-      const upcoming = (state.people||[]).filter(p => p.birthday).map(p => {
-        let pmd = md(p.birthday);
-        let delta = pmd - tmd;
-        if (delta < 0) delta += 365;
-        return { name: p.name, birthday: p.birthday, delta };
-      }).sort((a,b) => a.delta - b.delta);
+      if (numM) {
+        const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+        let buses = state.buses.filter(b => (b.number || '') === numM[1] && (parseTime(b.time) || 0) >= nowMin - 2)
+          .sort((a, b) => (a.time || '').localeCompare(b.time || '')).slice(0, 8);
+        reply = buses.length ? ('№' + numM[1] + ':\n' + formatBusAgentList(buses, nowMin)) : ('Рейсов №' + numM[1] + ' на сегодня больше нет.');
+      } else {
+        {
+        const busText = agentBusesReply(mode);
+        const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+        const modeKey = mode === 'school' || mode === 'morning' ? 'school' : (mode === 'home' ? 'home' : 'all');
+        let buses = getRelevantBuses(nowMin, modeKey, 8);
+        if (!buses.length && (modeKey === 'school' || modeKey === 'home')) {
+          buses = getRelevantBuses(0, modeKey, 8, { allowPast: true, horizon: 24 * 60 });
+        }
+        if (buses.length) {
+          agentHistory.push({
+            role: 'bot',
+            text: modeKey === 'school' ? '🚌 Автобусы в школу:' : modeKey === 'home' ? '🚌 Автобусы домой:' : '🚌 Автобусы:',
+            card: {
+              type: 'buses',
+              items: buses.map(b => {
+                const t = parseTime(b.time);
+                const walk = Number(b.walkMin) || 0;
+                const leave = t != null ? t - walk - nowMin : null;
+                const route = (b.from && b.to) ? (b.from + ' → ' + b.to) : (b.to || b.from || '');
+                return {
+                  time: b.time || '?',
+                  title: '№' + (b.number || '?'),
+                  meta: (leave != null ? 'выйти через ' + formatDurationMin(leave) + ' · ' : '') + route
+                };
+              })
+            }
+          });
+          renderAgent();
+          return;
+        }
+        reply = busText;
+      }
+      }
+    } else if (/день\s*рожден|\bдр\b|именин/.test(lower)) {
+      const upcoming = (state.people || []).filter(p => p.birthday).map(p => {
+        const delta = daysUntilBirthday(p.birthday);
+        return { name: p.name, birthday: p.birthday, delta: delta == null ? 9999 : delta };
+      }).filter(u => u.delta < 9999).sort((a, b) => a.delta - b.delta);
       if (!upcoming.length) reply = 'Нет дней рождения в списке «Люди».';
       else {
         const soon = upcoming.filter(u => u.delta <= 30);
-        reply = (soon.length ? 'Скоро ДР:\n' : 'Ближайшие ДР:\n') + (soon.length ? soon : upcoming.slice(0,5)).map(u =>
-          `• ${u.name} — ${u.birthday.slice(5)}${u.delta===0?' (сегодня!)':u.delta===1?' (завтра)':' через '+u.delta+' дн.'}`
-        ).join('\n');
+        const list = (soon.length ? soon : upcoming.slice(0, 5));
+        reply = (soon.length ? 'Скоро ДР:\n' : 'Ближайшие ДР:\n') + list.map(u => {
+          const when = u.delta === 0 ? ' (сегодня!)' : u.delta === 1 ? ' (завтра)' : ' через ' + u.delta + ' дн.';
+          return '• ' + u.name + ' — ' + String(u.birthday).slice(0, 10) + when;
+        }).join('\n');
       }
     } else if (/привет|здравств|хай|hello/.test(lower)) {
       reply = `Привет${state.profile.name ? ', ' + state.profile.name : ''}! Напиши «добавь» или «мат» — помогу.`;
 
     } else {
+      // Known short commands that must not open learn
+      if (/^(сейчас|далее|нагрузка|помощь|help|лог|статистика|домашка|дз|автобусы?|уроки?)$/i.test(lower.trim())) {
+        reply = 'Попробуй точнее: «сейчас урок», «нагрузка недели», «автобусы домой», «помощь».';
+        agentLog('bot', reply);
+        agentHistory.push({ role: 'bot', text: reply });
+        renderAgent();
+        return;
+      }
       // FALLBACK: offer learn + copy for external AI
       agentPending = { type: 'learn', phrase: raw };
-      const aiPrompt = `Ты помогаешь школьному планеру «Орбита». Пользователь написал: «${raw}».\nПерефразируй в одну чёткую команду на русском из списка:\n- добавь урок [предмет] [день] [время]\n- удали урок [предмет]\n- удали все уроки в [день]\n- перенеси [предмет] с [день] на [день]\n- очисти расписание\n- свободное время\n- что взять завтра\nОтветь ТОЛЬКО текстом команды, без пояснений.`;
-      reply = `Не понял «${raw}».\n\n1) Напиши, что это значит — запомню.\n2) Или скопируй промпт в нейросеть, а ответ вставь мне:\n\n---\n${aiPrompt}\n---`;
+      const aiPrompt = 'Ты помогаешь школьному планеру «Орбита». Пользователь написал: «' + raw + '».\nПерефразируй в одну чёткую команду на русском.\nОтветь ТОЛЬКО текстом команды.';
+      reply = 'Не понял «' + raw + '».\n\n1) Напиши, что это значит — запомню.\n2) Или скопируй промпт в нейросеть:\n\n---\n' + aiPrompt + '\n---';
+      agentLog('bot', reply.slice(0, 300));
       agentHistory.push({ role: 'bot', text: reply, copyPrompt: aiPrompt });
       renderAgent();
       return;
     }
 
+    if (reply) agentLog('bot', reply.slice(0, 300));
     agentHistory.push({ role: 'bot', text: reply });
     if (agentHistory.length > 50) agentHistory = agentHistory.slice(-40);
+    try {
+      if (agentPending) localStorage.setItem('orbit-agent-pending', JSON.stringify(agentPending));
+      else localStorage.removeItem('orbit-agent-pending');
+    } catch (e) {}
     renderAgent();
   }
 
+  function safeAgentReply(text) {
+    try { agentReply(text); }
+    catch (err) {
+      try { agentLog('error', String(err && err.message || err)); } catch (e) {}
+      agentHistory.push({ role: 'bot', text: 'Ошибка агента: ' + (err && err.message ? err.message : String(err)) + '\nНапиши «лог агента» и скопируй для отладки.' });
+      renderAgent();
+    }
+  }
   document.getElementById('agent-send').addEventListener('click', () => {
     const input = document.getElementById('agent-input');
     const t = input.value.trim(); if (!t) return;
-    input.value = ''; agentReply(t);
+    input.value = '';
+    renderLiveChips([]);
+    agentReply(t);
   });
-  document.getElementById('agent-input').addEventListener('keydown', e => {
+
+  // ─── Agent file import (drag & drop + picker) ───
+  function agentImportJsonText(text, fileName) {
+    try {
+      const data = JSON.parse(text);
+      if (!data || typeof data !== 'object') throw new Error('Не объект');
+      // Merge or replace?
+      const keys = ['lessons','clubs','buses','homework','goals','notes','people','holidays','events','dayLogs','packChecks'];
+      let added = [];
+      if (data.profile) {
+        state.profile = Object.assign({}, state.profile, data.profile);
+        added.push('профиль');
+      }
+      if (data.settings) {
+        state.settings = Object.assign({}, state.settings, data.settings);
+        added.push('настройки');
+      }
+      keys.forEach(k => {
+        if (Array.isArray(data[k]) && data[k].length) {
+          // merge by id if possible, else append
+          const existing = state[k] || [];
+          const ids = new Set(existing.map(x => x.id).filter(Boolean));
+          const fresh = data[k].map(item => {
+            const copy = Object.assign({}, item);
+            if (!copy.id) copy.id = uid();
+            if (ids.has(copy.id)) copy.id = uid();
+            return copy;
+          });
+          state[k] = existing.concat(fresh);
+          added.push(k + ' +' + fresh.length);
+        }
+      });
+      if (data.version && !added.length) {
+        // full state-like file
+        state = migrate(data);
+        added.push('полная база');
+      }
+      save();
+      applyTheme();
+      render();
+      return 'Импорт «' + (fileName || 'JSON') + '»: ' + (added.join(', ') || 'данных не найдено') + '.';
+    } catch (e) {
+      return 'Не удалось разобрать JSON: ' + (e.message || e);
+    }
+  }
+
+  async function agentHandleFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    agentHistory.push({ role: 'user', text: '📎 ' + files.map(f => f.name).join(', ') });
+    agentHistory.push({ role: 'bot', text: '⏳ Обрабатываю ' + files.length + ' файл(ов)…' });
+    renderAgent();
+    agentLog('import_start', files.map(f => f.name).join(', '));
+    const results = [];
+    for (const file of files) {
+      const name = file.name || 'file';
+      const lower = name.toLowerCase();
+      try {
+        if (/\.json$/i.test(lower) || file.type === 'application/json') {
+          const text = await file.text();
+          results.push(agentImportJsonText(text, name));
+        } else if (/\.txt$/i.test(lower) || file.type === 'text/plain') {
+          const text = await file.text();
+          // try JSON first
+          if (text.trim().startsWith('{')) {
+            results.push(agentImportJsonText(text, name));
+          } else {
+            // treat as homework lines or notes
+            const lines = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
+            lines.forEach(line => {
+              state.notes.push({ id: uid(), title: 'Импорт ' + name, body: line, created: Date.now(), updated: Date.now() });
+            });
+            save();
+            results.push('Текст «' + name + '»: ' + lines.length + ' заметок.');
+          }
+        } else if (/\.csv$/i.test(lower) || file.type === 'text/csv') {
+          if (typeof XLSX === 'undefined') {
+            results.push('CSV: нужен модуль XLSX');
+            continue;
+          }
+          const text = await file.text();
+          const wb = XLSX.read(text, { type: 'string' });
+          wb.SheetNames.forEach(sn => applySheetRows(sn, sheetToObjects(wb.Sheets[sn])));
+          save(); render();
+          results.push('CSV «' + name + '» импортирован (' + wb.SheetNames.join(', ') + ').');
+        } else if (/\.xlsx?$/i.test(lower)) {
+          if (typeof XLSX === 'undefined') {
+            results.push('Excel: нужен модуль XLSX');
+            continue;
+          }
+          const buf = await file.arrayBuffer();
+          const wb = XLSX.read(buf, { type: 'array' });
+          wb.SheetNames.forEach(sn => applySheetRows(sn, sheetToObjects(wb.Sheets[sn])));
+          save(); render();
+          results.push('Excel «' + name + '» импортирован: ' + wb.SheetNames.join(', '));
+        } else {
+          results.push('«' + name + '»: формат не поддерживается. Нужны JSON, CSV, Excel, TXT.');
+        }
+      } catch (e) {
+        results.push('«' + name + '»: ошибка — ' + (e.message || e));
+      }
+    }
+    // remove loading placeholder
+    if (agentHistory.length && agentHistory[agentHistory.length - 1].text && agentHistory[agentHistory.length - 1].text.indexOf('⏳') === 0) {
+      agentHistory.pop();
+    }
+    agentHistory.push({
+      role: 'bot',
+      text: results.join('\n'),
+      choices: [
+        { label: 'Проверка дня', cmd: 'проверка дня' },
+        { label: 'Уроки сегодня', cmd: 'уроки сегодня' },
+        { label: 'Автобусы', cmd: 'автобусы сейчас' }
+      ]
+    });
+    agentLog('import_done', results.join(' | ').slice(0, 200));
+    trackUsage('import_file');
+    renderAgent();
+  }
+
+  function setupAgentDrop() {
+    const zone = document.getElementById('agent-drop');
+    const input = document.getElementById('agent-file-input');
+    const btn = document.getElementById('agent-file-btn');
+    if (!zone || zone.dataset.ready) return;
+    zone.dataset.ready = '1';
+    btn?.addEventListener('click', () => input?.click());
+    input?.addEventListener('change', () => {
+      if (input.files?.length) agentHandleFiles(input.files);
+      input.value = '';
+    });
+    ['dragenter', 'dragover'].forEach(ev => {
+      zone.addEventListener(ev, e => {
+        e.preventDefault();
+        e.stopPropagation();
+        zone.classList.add('drag-over');
+      });
+    });
+    ['dragleave', 'drop'].forEach(ev => {
+      zone.addEventListener(ev, e => {
+        e.preventDefault();
+        e.stopPropagation();
+        zone.classList.remove('drag-over');
+      });
+    });
+    zone.addEventListener('drop', e => {
+      const files = e.dataTransfer?.files;
+      if (files?.length) agentHandleFiles(files);
+    });
+    // whole agent tab as secondary drop target
+    const tab = document.getElementById('tab-agent');
+    tab?.addEventListener('dragover', e => { e.preventDefault(); });
+    tab?.addEventListener('drop', e => {
+      e.preventDefault();
+      if (e.dataTransfer?.files?.length) agentHandleFiles(e.dataTransfer.files);
+    });
+  }
+
+
+  document.getElementById('agent-input')?.addEventListener('input', onAgentInputLive);
+  document.getElementById('agent-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      renderLiveChips([]);
+      e.target.value = '';
+    }
+
     if (e.key === 'Enter') document.getElementById('agent-send').click();
   });
   document.getElementById('agent-suggestions')?.addEventListener('click', e => {
@@ -2125,9 +3688,9 @@
     const item = id ? state.homework.find(h => h.id === id) : null;
     const isNew = !item;
     openModal(isNew ? 'Новая домашка' : 'Домашка', `
-      <div class="form-group"><label>Предмет</label><input class="input" id="f-subject" value="${escapeHtml(item?.subject || '')}"></div>
-      <div class="form-group"><label>Задание</label><input class="input" id="f-title" value="${escapeHtml(item?.title || '')}"></div>
-      <div class="form-row"><div class="form-group"><label>Срок</label><input class="input" id="f-due" type="date" value="${escapeHtml(item?.due || '')}"></div>
+      <div class="form-group"><label>Предмет</label><input class="input" id="f-subject" value="${escapeAttr(item?.subject || '')}"></div>
+      <div class="form-group"><label>Задание</label><input class="input" id="f-title" value="${escapeAttr(item?.title || '')}"></div>
+      <div class="form-row"><div class="form-group"><label>Срок</label><input class="input" id="f-due" type="date" value="${escapeAttr(item?.due || '')}"></div>
       <div class="form-group"><label>Приоритет</label><select class="input" id="f-priority">
         <option value="high"${item?.priority === 'high' ? ' selected' : ''}>Высокий</option>
         <option value="medium"${!item || item.priority === 'medium' ? ' selected' : ''}>Средний</option>
@@ -2147,8 +3710,8 @@
     const item = id ? state.goals.find(g => g.id === id) : null;
     const isNew = !item;
     openModal(isNew ? 'Новая цель' : 'Цель', `
-      <div class="form-group"><label>Название</label><input class="input" id="f-title" value="${escapeHtml(item?.title || '')}"></div>
-      <div class="form-group"><label>Дедлайн</label><input class="input" id="f-deadline" type="date" value="${escapeHtml(item?.deadline || '')}"></div>
+      <div class="form-group"><label>Название</label><input class="input" id="f-title" value="${escapeAttr(item?.title || '')}"></div>
+      <div class="form-group"><label>Дедлайн</label><input class="input" id="f-deadline" type="date" value="${escapeAttr(item?.deadline || '')}"></div>
       <div class="form-group"><label>Прогресс: <span id="prog-val">${item?.progress || 0}</span>%</label>
         <input type="range" id="f-progress" min="0" max="100" value="${item?.progress || 0}" style="width:100%"></div>
       <div class="form-group"><label>Заметки</label><textarea class="textarea" id="f-notes">${escapeHtml(item?.notes || '')}</textarea></div>
@@ -2253,29 +3816,46 @@
       <div class="card" data-id="${n.id}" style="cursor:pointer">
         <div class="card-title">${escapeHtml(n.title || 'Без названия')}${n.audio ? ' 🎤' : ''}${n.pinned ? ' 📌' : ''}</div>
         <div class="card-meta" style="margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeHtml(n.body || '')}</div>
-        ${n.audio ? `<audio controls src="data:${n.audioMime || 'audio/webm'};base64,${n.audio}" style="width:100%;margin-top:8px;max-height:36px"></audio>` : ''}
+        ${n.audioId || n.audio ? `<audio controls data-audio-id="${escapeAttr(n.audioId || '')}" class="note-audio" style="width:100%;margin-top:8px;max-height:36px"></audio>` : ''}
       </div>`).join('');
     list.querySelectorAll('.card').forEach(c => { c.onclick = e => { if (!e.target.closest('audio')) openNoteModal(c.dataset.id); }; });
+    list.querySelectorAll('audio.note-audio').forEach(async el => {
+      const aid = el.dataset.audioId;
+      if (!aid) return;
+      const row = await loadAudioBlob(aid);
+      if (row && row.blob) el.src = URL.createObjectURL(row.blob);
+    });
   }
 
   function openNoteModal(id) {
     const item = id ? state.notes.find(n => n.id === id) : null;
     const isNew = !item;
     openModal(isNew ? 'Новая заметка' : 'Заметка', `
-      <div class="form-group"><label>Заголовок</label><input class="input" id="f-title" value="${escapeHtml(item?.title || '')}"></div>
+      <div class="form-group"><label>Заголовок</label><input class="input" id="f-title" value="${escapeAttr(item?.title || '')}"></div>
       <div class="form-group"><label>Текст</label><textarea class="textarea" id="f-body" rows="5">${escapeHtml(item?.body || '')}</textarea></div>
       <div class="form-group">
         <label>Голосовая заметка</label>
         <div style="display:flex;gap:8px;align-items:center">
-          <button type="button" class="btn btn-secondary btn-sm" id="rec-btn">${item?.audio ? 'Перезаписать' : '🎤 Записать'}</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="rec-btn">${(item?.audioId || item?.audio) ? 'Перезаписать' : '🎤 Записать'}</button>
           <span id="rec-status" class="text-muted" style="font-size:0.8rem"></span>
         </div>
-        ${item?.audio ? `<audio controls src="data:${item.audioMime || 'audio/webm'};base64,${item.audio}" style="width:100%;margin-top:8px"></audio>` : ''}
+        ${item?.audioId || item?.audio ? `<audio controls style="width:100%;margin-top:8px" id="note-edit-audio"></audio>` : ''}
       </div>
     `, `${!isNew ? `<button class="btn btn-danger" id="modal-del">Удалить</button>` : ''}<button class="btn btn-primary" id="modal-save">Сохранить</button>`);
 
     let newAudio = item?.audio || null;
+    let newAudioBlob = null;
     let newMime = item?.audioMime || 'audio/webm';
+    let audioId = item?.audioId || null;
+    (async () => {
+      if (audioId) {
+        const row = await loadAudioBlob(audioId);
+        if (row && row.blob) {
+          const el = document.querySelector('#modal-overlay audio, .modal audio');
+          if (el) el.src = URL.createObjectURL(row.blob);
+        }
+      }
+    })();
 
     document.getElementById('rec-btn').onclick = async () => {
       if (mediaRecorder && mediaRecorder.state === 'recording') {
@@ -2293,12 +3873,19 @@
           stream.getTracks().forEach(t => t.stop());
           const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
           newMime = blob.type || 'audio/webm';
-          const reader = new FileReader();
-          reader.onload = () => {
-            newAudio = reader.result.split(',')[1];
+          newAudioBlob = blob;
+            newMime = blob.type || 'audio/webm';
             document.getElementById('rec-status').textContent = 'Записано ✓';
-          };
-          reader.readAsDataURL(blob);
+            const url = URL.createObjectURL(blob);
+            let preview = document.getElementById('rec-preview');
+            if (!preview) {
+              preview = document.createElement('audio');
+              preview.id = 'rec-preview';
+              preview.controls = true;
+              preview.style.cssText = 'width:100%;margin-top:8px';
+              document.getElementById('rec-status').parentNode.parentNode.appendChild(preview);
+            }
+            preview.src = url;
         };
         mediaRecorder.start();
         document.getElementById('rec-btn').textContent = '⏹ Стоп';
@@ -2314,13 +3901,15 @@
         body: document.getElementById('f-body').value.trim(),
         created: item?.created || now, updated: now,
         pinned: item?.pinned || false,
-        audio: newAudio, audioMime: newMime
+        audio: null, audioMime: newMime, audioId: audioId
       };
       if (isNew) state.notes.push(data);
       else { const idx = state.notes.findIndex(n => n.id === id); if (idx >= 0) state.notes[idx] = data; }
       save(); closeModal(); render(); toast('Сохранено');
     };
-    if (!isNew) document.getElementById('modal-del').onclick = () => {
+    if (!isNew) document.getElementById('modal-del').onclick = async () => {
+      const n = state.notes.find(x => x.id === id);
+      if (n && n.audioId) await deleteAudioBlob(n.audioId);
       state.notes = state.notes.filter(n => n.id !== id); save(); closeModal(); render(); toast('Удалено');
     };
   }
@@ -2336,9 +3925,9 @@
 
     if (profileTab === 'info') {
       content.innerHTML = `
-        <div class="form-group"><label>Имя</label><input class="input" id="p-name" value="${escapeHtml(state.profile.name)}"></div>
-        <div class="form-group"><label>Класс</label><input class="input" id="p-class" value="${escapeHtml(state.profile.className)}"></div>
-        <div class="form-group"><label>Школа</label><input class="input" id="p-school" value="${escapeHtml(state.profile.school)}"></div>
+        <div class="form-group"><label>Имя</label><input class="input" id="p-name" value="${escapeAttr(state.profile.name)}"></div>
+        <div class="form-group"><label>Класс</label><input class="input" id="p-class" value="${escapeAttr(state.profile.className)}"></div>
+        <div class="form-group"><label>Школа</label><input class="input" id="p-school" value="${escapeAttr(state.profile.school)}"></div>
         <div class="form-group"><label>О себе</label><textarea class="textarea" id="p-notes">${escapeHtml(state.profile.notes)}</textarea></div>
         <button class="btn btn-primary btn-block" id="p-save">Сохранить</button>`;
       document.getElementById('p-save').onclick = () => {
@@ -2387,6 +3976,14 @@
       document.getElementById('btn-dl-xlsx').onclick = () => { const a = document.createElement('a'); a.href = 'templates/orbit-import-template.xlsx'; a.download = 'orbit-import-template.xlsx'; a.click(); };
       document.getElementById('btn-dl-docx').onclick = () => { const a = document.createElement('a'); a.href = 'templates/orbit-import-template.docx'; a.download = 'orbit-import-template.docx'; a.click(); };
       document.getElementById('btn-example').onclick = loadExample;
+      const bip = document.getElementById('btn-install-profile');
+      if (bip) bip.onclick = () => {
+        if (window.__orbitDeferredInstall) {
+          window.__orbitDeferredInstall.prompt();
+        } else {
+          toast('В меню браузера: «Установить приложение» или «На экран Домой»');
+        }
+      };
       document.getElementById('btn-refresh-app').onclick = async () => {
         try {
           if (navigator.serviceWorker) {
@@ -2450,8 +4047,9 @@
       });
     } else if (profileTab === 'qr') {
       content.innerHTML = `
-        <p class="hint mb-8"><strong>Обмен через QR</strong> — каждый блок отдельно: уроки, кружки, люди, каникулы, автобусы, домашка или вся база.</p>
+        <p class="hint mb-8"><strong>Обмен через QR</strong> — ссылка на приложение или данные (уроки, кружки…).</p>
         <div class="qr-actions">
+          <button class="btn btn-primary" id="qr-gen-app">QR: открыть приложение</button>
           <button class="btn btn-secondary" id="qr-gen-lessons">QR: только уроки</button>
           <button class="btn btn-secondary" id="qr-gen-clubs">QR: кружки</button>
           <button class="btn btn-secondary" id="qr-gen-people">QR: люди и ДР</button>
@@ -2537,7 +4135,7 @@ day: 0=Пн … 6=Вс. Время HH:MM.
         <h3 class="settings-cat">2. Уроки и переменки</h3>
         <div class="form-row">
           <div class="form-group"><label>Длительность урока</label><input class="input" id="s-lesson-dur" type="number" min="20" max="90" value="${s.lessonDuration||40}"></div>
-          <div class="form-group"><label>Начало дня</label><input class="input" id="s-day-start" type="time" value="${escapeHtml(s.dayStart||'08:30')}"></div>
+          <div class="form-group"><label>Начало дня</label><input class="input" id="s-day-start" type="time" value="${escapeAttr(s.dayStart||'08:30')}"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Перемена 10 мин</label><input class="input" id="s-break-dur" type="number" min="5" max="30" value="${s.breakDuration||10}"></div>
@@ -2562,9 +4160,13 @@ day: 0=Пн … 6=Вс. Время HH:MM.
         <div class="form-group"><label><input type="checkbox" id="s-agent-learn" ${s.agentLearn!==false?'checked':''}> Обучение (IndexedDB)</label></div>
         <div class="form-group"><label><input type="checkbox" id="s-agent-ai-prompt" ${s.agentAiPrompt!==false?'checked':''}> Промпт для нейросети при непонимании</label></div>
         <div class="form-group"><label>Язык подсказок</label>
-          <select class="input" id="s-agent-lang"><option value="ru" selected>Русский</option></select>
+          <select class="input" id="s-agent-lang"><option value="ru" ${s.agentLang!=='en'?'selected':''}>Русский</option><option value="en" ${s.agentLang==='en'?'selected':''}>English</option></select>
         </div>
-
+        <p class="hint mb-8">Нейросеть по API — опционально. Без ключа агент работает локально как раньше.</p>
+        <div class="form-group"><label>API Endpoint</label><input class="input" id="s-llm-endpoint" placeholder="https://api.openai.com/v1/chat/completions" value="${escapeAttr(s.llmEndpoint||'')}"></div>
+        <div class="form-group"><label>API Key</label><input class="input" id="s-llm-key" type="password" placeholder="sk-…" value="${escapeAttr(s.llmKey||'')}" autocomplete="off"></div>
+        <div class="form-group"><label>Модель</label><input class="input" id="s-llm-model" placeholder="gpt-4o-mini" value="${escapeAttr(s.llmModel||'gpt-4o-mini')}"></div>
+        <div class="form-group"><label><input type="checkbox" id="s-llm-enabled" ${s.llmEnabled?'checked':''}> Включить запросы к нейросети</label></div>
         <h3 class="settings-cat">5. Данные и приватность</h3>
         <div class="form-group"><label><input type="checkbox" id="s-autosave" ${s.autosave!==false?'checked':''}> Автосохранение</label></div>
         <div class="form-group"><label><input type="checkbox" id="s-backup" ${s.backup!==false?'checked':''}> Локальный бэкап</label></div>
@@ -2599,6 +4201,13 @@ day: 0=Пн … 6=Вс. Время HH:MM.
         state.settings.leaveBuffer = +document.getElementById('s-leave-buffer').value || 5;
         state.settings.agentLearn = document.getElementById('s-agent-learn').checked;
         state.settings.agentAiPrompt = document.getElementById('s-agent-ai-prompt').checked;
+        const lep = document.getElementById('s-llm-endpoint');
+        if (lep) {
+          state.settings.llmEndpoint = lep.value.trim();
+          state.settings.llmKey = document.getElementById('s-llm-key').value.trim();
+          state.settings.llmModel = document.getElementById('s-llm-model').value.trim() || 'gpt-4o-mini';
+          state.settings.llmEnabled = document.getElementById('s-llm-enabled').checked;
+        }
         state.settings.autosave = document.getElementById('s-autosave').checked;
         state.settings.backup = document.getElementById('s-backup').checked;
         state.settings.remindBus = document.getElementById('s-remind-bus').checked;
@@ -2610,6 +4219,8 @@ day: 0=Пн … 6=Вс. Время HH:MM.
       content.innerHTML = `<div class="card">
         <div class="fw-600" style="font-size:1.1rem">Орбита</div>
         <div class="text-muted" style="margin-top:4px">Версия ${APP_VERSION}</div>
+        <button type="button" class="btn btn-secondary btn-block mt-12" id="btn-install-profile">📲 Установить на домашний экран</button>
+        <p class="hint mt-8" id="install-hint">В Safari: Поделиться → На экран «Домой». В Chrome появится кнопка установки.</p>
         <p class="hint mt-12">Умный школьный планер: расписание, QR-обмен, агент, графики, дневник, автобусы, домашка, цели.\nДанные только на устройстве. Работает офлайн.</p>
       </div>`;
     }
@@ -2630,9 +4241,9 @@ day: 0=Пн … 6=Вс. Время HH:MM.
     const p = id ? state.people.find(x => x.id === id) : null;
     const isNew = !p;
     openModal(isNew ? 'Новый человек' : 'Человек', `
-      <div class="form-group"><label>Имя</label><input class="input" id="f-name" value="${escapeHtml(p?.name || '')}"></div>
-      <div class="form-group"><label>Кем приходится</label><input class="input" id="f-relation" value="${escapeHtml(p?.relation || '')}" placeholder="мама, друг…"></div>
-      <div class="form-group"><label>День рождения (ММ-ДД или ГГГГ-ММ-ДД)</label><input class="input" id="f-bday" value="${escapeHtml(p?.birthday || '')}" placeholder="03-15"></div>
+      <div class="form-group"><label>Имя</label><input class="input" id="f-name" value="${escapeAttr(p?.name || '')}"></div>
+      <div class="form-group"><label>Кем приходится</label><input class="input" id="f-relation" value="${escapeAttr(p?.relation || '')}" placeholder="мама, друг…"></div>
+      <div class="form-group"><label>День рождения (ММ-ДД или ГГГГ-ММ-ДД)</label><input class="input" id="f-bday" value="${escapeAttr(p?.birthday || '')}" placeholder="03-15"></div>
       <div class="form-group"><label>Заметки</label><textarea class="textarea" id="f-notes">${escapeHtml(p?.notes || '')}</textarea></div>
     `, `${!isNew ? `<button class="btn btn-danger" id="modal-del">Удалить</button>` : ''}<button class="btn btn-primary" id="modal-save">Сохранить</button>`);
     document.getElementById('modal-save').onclick = () => {
@@ -2646,35 +4257,135 @@ day: 0=Пн … 6=Вс. Время HH:MM.
 
   function renderHolidaysList() {
     const list = document.getElementById('holidays-list');
-    if (!state.holidays.length) { list.innerHTML = `<div class="empty"><p>Нет каникул</p></div>`; return; }
-    list.innerHTML = state.holidays.map(h => `
-      <div class="card" data-id="${h.id}" style="cursor:pointer">
-        <div class="card-title">${escapeHtml(h.name)}</div>
-        <div class="card-meta">${escapeHtml(h.start || '')} – ${escapeHtml(h.end || '')}</div>
-      </div>`).join('');
-    list.querySelectorAll('.card').forEach(c => { c.onclick = () => openHolidayModal(c.dataset.id); });
+    if (!list) return;
+    if (!state.holidays.length) {
+      list.innerHTML = `<div class="empty"><p>Нет каникул. Добавь период и задания на каникулы.</p></div>`;
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    list.innerHTML = state.holidays.map(h => {
+      const tasks = Array.isArray(h.tasks) ? h.tasks : [];
+      const done = tasks.filter(t => t.done).length;
+      const total = tasks.length;
+      const pct = total ? Math.round(done / total * 100) : 0;
+      const active = h.start && h.end && today >= h.start && today <= h.end;
+      const hwText = h.homework ? escapeHtml(h.homework).slice(0, 80) : '';
+      return `<div class="card holiday-card" data-id="${h.id}">
+        <div class="card-title">${escapeHtml(h.name || 'Каникулы')}${active ? ' <span class="card-badge">сейчас</span>' : ''}</div>
+        <div class="card-meta">${escapeHtml(h.start || '')} — ${escapeHtml(h.end || '')}</div>
+        ${total ? `<div class="holiday-progress"><div class="holiday-progress-bar" style="width:${pct}%"></div></div>
+          <div class="card-meta">${done}/${total} заданий · ${pct}%</div>` : (hwText ? `<div class="card-meta">${hwText}</div>` : '')}
+        <button type="button" class="btn btn-secondary btn-block mt-8" data-expand="${h.id}" style="font-size:0.8rem">Раскрыть задания</button>
+      </div>`;
+    }).join('');
+
+    list.querySelectorAll('.holiday-card').forEach(c => {
+      c.addEventListener('click', e => {
+        if (e.target.closest('[data-expand]')) return;
+        openHolidayModal(c.dataset.id);
+      });
+    });
+    list.querySelectorAll('[data-expand]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        openHolidayTasks(btn.dataset.expand);
+      });
+    });
+  }
+
+  function openHolidayTasks(id) {
+    const h = state.holidays.find(x => x.id === id);
+    if (!h) return;
+    if (!Array.isArray(h.tasks)) h.tasks = [];
+    // migrate old homework text into tasks once
+    if (!h.tasks.length && h.homework) {
+      h.homework.split(/\n+/).map(s => s.trim()).filter(Boolean).forEach(title => {
+        h.tasks.push({ id: uid(), title, done: false });
+      });
+    }
+    const tasks = h.tasks;
+    const done = tasks.filter(t => t.done).length;
+    openModal(h.name || 'Задания на каникулы', `
+      <p class="hint mb-8">${escapeHtml(h.start || '')} — ${escapeHtml(h.end || '')} · выполнено ${done}/${tasks.length}</p>
+      <div id="holiday-tasks-list">
+        ${tasks.map(t => `
+          <label class="pack-item" style="margin-bottom:8px">
+            <input type="checkbox" data-tid="${t.id}" ${t.done ? 'checked' : ''}>
+            <span class="pack-label">${escapeHtml(t.title)}</span>
+          </label>`).join('') || '<p class="text-muted">Пока нет заданий</p>'}
+      </div>
+      <div class="form-group mt-12"><label>Новое задание</label>
+        <input class="input" id="f-new-task" placeholder="Например: прочитать гл. 1–3">
+      </div>
+    `, `<button class="btn btn-secondary" id="modal-cancel">Закрыть</button><button class="btn btn-primary" id="modal-add-task">+ Задание</button>`);
+
+    document.getElementById('modal-cancel').onclick = closeModal;
+    document.getElementById('holiday-tasks-list')?.addEventListener('change', e => {
+      const cb = e.target.closest('input[data-tid]');
+      if (!cb) return;
+      const t = h.tasks.find(x => x.id === cb.dataset.tid);
+      if (t) { t.done = cb.checked; save(); }
+      const d = h.tasks.filter(x => x.done).length;
+      toast(`Прогресс: ${d}/${h.tasks.length}`);
+    });
+    document.getElementById('modal-add-task').onclick = () => {
+      const title = document.getElementById('f-new-task').value.trim();
+      if (!title) return toast('Введи текст задания');
+      h.tasks.push({ id: uid(), title, done: false });
+      save();
+      openHolidayTasks(id);
+      toast('Задание добавлено');
+    };
   }
 
   function openHolidayModal(id) {
     const h = id ? state.holidays.find(x => x.id === id) : null;
     const isNew = !h;
+    const tasks = Array.isArray(h?.tasks) ? h.tasks : [];
     openModal(isNew ? 'Новые каникулы' : 'Каникулы', `
-      <div class="form-group"><label>Название</label><input class="input" id="f-name" value="${escapeHtml(h?.name || '')}" placeholder="Осенние каникулы"></div>
-      <div class="form-row"><div class="form-group"><label>Начало</label><input class="input" id="f-start" type="date" value="${escapeHtml(h?.start || '')}"></div>
-      <div class="form-group"><label>Конец</label><input class="input" id="f-end" type="date" value="${escapeHtml(h?.end || '')}"></div></div>
-      <div class="form-group"><label>Домашка на каникулы</label><textarea class="textarea" id="f-hw">${escapeHtml(h?.homework || '')}</textarea></div>
+      <div class="form-group"><label>Название</label><input class="input" id="f-name" value="${escapeAttr(h?.name || '')}" placeholder="Осенние каникулы"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Начало</label><input class="input" id="f-start" type="date" value="${escapeAttr(h?.start || '')}"></div>
+        <div class="form-group"><label>Конец</label><input class="input" id="f-end" type="date" value="${escapeAttr(h?.end || '')}"></div>
+      </div>
+      <div class="form-group"><label>Задания (по одному в строке)</label>
+        <textarea class="textarea" id="f-tasks" rows="5" placeholder="Прочитать рассказ&#10;Математика: стр. 40–45&#10;Проект по окружающему миру">${escapeHtml(tasks.map(t => t.title).join('\n') || h?.homework || '')}</textarea>
+        <p class="hint">После сохранения можно отмечать выполнение в «Раскрыть задания»</p>
+      </div>
       <div class="form-group"><label>Заметки</label><textarea class="textarea" id="f-notes">${escapeHtml(h?.notes || '')}</textarea></div>
     `, `${!isNew ? `<button class="btn btn-danger" id="modal-del">Удалить</button>` : ''}<button class="btn btn-primary" id="modal-save">Сохранить</button>`);
+
     document.getElementById('modal-save').onclick = () => {
-      const data = { id: h?.id || uid(), name: document.getElementById('f-name').value.trim(), start: document.getElementById('f-start').value, end: document.getElementById('f-end').value, homework: document.getElementById('f-hw').value.trim(), notes: document.getElementById('f-notes').value.trim() };
+      const lines = document.getElementById('f-tasks').value.split(/\n+/).map(s => s.trim()).filter(Boolean);
+      const oldTasks = Array.isArray(h?.tasks) ? h.tasks : [];
+      const newTasks = lines.map(title => {
+        const prev = oldTasks.find(t => t.title === title);
+        return prev ? { ...prev } : { id: uid(), title, done: false };
+      });
+      const data = {
+        id: h?.id || uid(),
+        name: document.getElementById('f-name').value.trim(),
+        start: document.getElementById('f-start').value,
+        end: document.getElementById('f-end').value,
+        homework: lines.join('\n'),
+        tasks: newTasks,
+        notes: document.getElementById('f-notes').value.trim()
+      };
       if (!data.name) return toast('Укажи название');
-      if (isNew) state.holidays.push(data); else { const idx = state.holidays.findIndex(x => x.id === id); if (idx >= 0) state.holidays[idx] = data; }
-      save(); closeModal(); renderProfile(); toast('Сохранено');
+      if (isNew) state.holidays.push(data);
+      else {
+        const idx = state.holidays.findIndex(x => x.id === id);
+        if (idx >= 0) state.holidays[idx] = data;
+      }
+      save(); closeModal(); render(); toast('Сохранено');
     };
-    if (!isNew) document.getElementById('modal-del').onclick = () => { state.holidays = state.holidays.filter(x => x.id !== id); save(); closeModal(); renderProfile(); toast('Удалено'); };
+    if (!isNew) document.getElementById('modal-del').onclick = () => {
+      state.holidays = state.holidays.filter(x => x.id !== id);
+      save(); closeModal(); render(); toast('Удалено');
+    };
   }
 
-  // ─── Share selective ───
+
   function openShareModal() {
     openModal('Поделиться данными', `
       <p class="hint mb-8">Выбери, что включить:</p>
@@ -2721,6 +4432,23 @@ day: 0=Пн … 6=Вс. Время HH:MM.
   }
 
   // ─── QR ───
+  function showUrlQr(url, title) {
+    const wrap = document.getElementById('qr-canvas-wrap') || document.getElementById('qr-result');
+    const titleEl = document.getElementById('qr-result-title');
+    const hint = document.getElementById('qr-result-hint');
+    if (titleEl) titleEl.textContent = title || 'QR';
+    if (!wrap || typeof qrcode === 'undefined') { toast('QR недоступен'); return; }
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(url);
+      qr.make();
+      wrap.innerHTML = qr.createImgTag(5, 8);
+      if (hint) hint.textContent = 'Сканируй камерой телефона — откроется Орбита. ' + url;
+      toast('QR приложения готов');
+    } catch (e) { toast('Не удалось создать QR'); }
+  }
+
+
   async function encodePayload(obj) {
     const json = JSON.stringify(obj);
     try {
@@ -2792,6 +4520,10 @@ day: 0=Пн … 6=Вс. Время HH:MM.
   }
 
   function bindQrHandlers() {
+    document.getElementById('qr-gen-app')?.addEventListener('click', () => {
+      const url = location.href.split('#')[0].split('?')[0];
+      showUrlQr(url, 'QR: приложение Орбита');
+    });
     document.getElementById('qr-gen-lessons')?.addEventListener('click', () => showDataQr({ lessons: state.lessons }, 'QR: уроки (' + state.lessons.length + ')'));
     document.getElementById('qr-gen-clubs')?.addEventListener('click', () => showDataQr({ clubs: state.clubs }, 'QR: кружки'));
     document.getElementById('qr-gen-people')?.addEventListener('click', () => showDataQr({ people: state.people }, 'QR: люди'));
@@ -2935,6 +4667,10 @@ day: 0=Пн … 6=Вс. Время HH:MM.
     catch { toast('Не удалось'); }
   }
   function openImportModal() {
+    try {
+      localStorage.setItem('orbit-pre-import-backup', JSON.stringify(stateForStorage()));
+    } catch (e) {}
+
     openModal('Импорт JSON', `
       <p class="hint mb-8">Файл или текст (из мессенджера / нейросети / QR payload).</p>
       <button class="btn btn-secondary btn-block mb-8" id="import-file-btn">Выбрать файл .json</button>
@@ -2962,6 +4698,10 @@ day: 0=Пн … 6=Вс. Время HH:MM.
   }
 
   function loadExample() {
+    if ((state.lessons && state.lessons.length) || (state.buses && state.buses.length)) {
+      if (!confirm('Загрузить пример? Текущие уроки/автобусы будут заменены. Сначала сделай экспорт, если нужны данные.')) return;
+    }
+
     const example = {
       profile: { name: 'Алексей', className: '8Б', school: 'Лицей №1', notes: 'Люблю физику' },
       lessons: [
@@ -3203,14 +4943,108 @@ day: 0=Пн … 6=Вс. Время HH:MM.
 
   // ─── Init ───
   load();
+  loadUndoStack();
+  loadAgentUsage();
+  loadAgentDebugLog();
   loadAgentKnowledge();
   try {
     const hl = localStorage.getItem('orbit-home-logs');
     if (hl) homeLogs = JSON.parse(hl) || [];
   } catch (e) {}
   applyTheme();
+  function applyHashRoute() {
+    const h = (location.hash || '').replace('#', '');
+    const map = { today: 'today', schedule: 'schedule', lessons: 'schedule', agent: 'agent', buses: 'buses', pack: 'pack', tasks: 'tasks', profile: 'profile' };
+    if (h && map[h]) switchTab(map[h]);
+  }
+  window.addEventListener('hashchange', applyHashRoute);
+  applyHashRoute();
   render();
+  // hide splash
+  setTimeout(() => {
+    const sp = document.getElementById('orbit-splash');
+    if (sp) { sp.classList.add('hide'); setTimeout(() => sp.remove(), 400); }
+  }, 200);
+
+
+  // E2: version banner
+  fetch('./version.json?t=' + Date.now()).then(r => r.json()).then(v => {
+    if (v && v.version && v.version !== APP_VERSION) {
+      const bar = document.createElement('div');
+      bar.className = 'update-banner';
+      bar.innerHTML = 'Доступна v' + escapeHtml(v.version) + ' (сейчас ' + APP_VERSION + ') <button type="button" class="btn btn-primary btn-sm" id="btn-force-update">Обновить</button>';
+      document.querySelector('.app')?.prepend(bar);
+      document.getElementById('btn-force-update')?.addEventListener('click', async () => {
+        if (navigator.serviceWorker) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const r of regs) await r.unregister();
+        }
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+        location.reload();
+      });
+    }
+  }).catch(() => {});
+
+  // Offline indicator
+  function syncOnlineUi() {
+    let el = document.getElementById('offline-badge');
+    if (!el) {
+      el = document.createElement('span');
+      el.id = 'offline-badge';
+      el.className = 'offline-badge';
+      el.textContent = 'Офлайн';
+      document.querySelector('.header-actions')?.prepend(el);
+    }
+    el.style.display = navigator.onLine ? 'none' : 'inline-flex';
+    const strip = document.getElementById('offline-strip');
+    if (strip) {
+      if (navigator.onLine) strip.setAttribute('hidden', '');
+      else strip.removeAttribute('hidden');
+    }
+  }
+  window.addEventListener('online', syncOnlineUi);
+  window.addEventListener('offline', syncOnlineUi);
+  syncOnlineUi();
+
+  // PWA install
+  let deferredInstall = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredInstall = e; window.__orbitDeferredInstall = e;
+    let btn = document.getElementById('btn-install-pwa');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'btn-install-pwa';
+      btn.className = 'btn btn-secondary btn-block mb-8';
+      btn.textContent = '📲 Установить приложение';
+      btn.onclick = async () => {
+        if (!deferredInstall) return;
+        deferredInstall.prompt();
+        await deferredInstall.userChoice;
+        deferredInstall = null;
+        btn.remove();
+      };
+    }
+    // attach when profile about/data shown — also put in header once
+    const ha = document.querySelector('.header-actions');
+    if (ha && !document.getElementById('btn-install-pwa-icon')) {
+      const b = document.createElement('button');
+      b.id = 'btn-install-pwa-icon';
+      b.className = 'icon-btn';
+      b.title = 'Установить';
+      b.textContent = '⬇';
+      b.onclick = () => btn.onclick();
+      ha.appendChild(b);
+    }
+  });
+
+  // migrate legacy base64 audio
+  setTimeout(() => { migrateBase64AudioToIdb().catch(() => {}); }, 800);
+
   setInterval(() => {
+    if (document.querySelector('.modal-overlay:not(.hidden), .modal.show, #modal:not(.hidden)')) return;
+    if (document.activeElement && document.activeElement.closest && document.activeElement.closest('.modal, .modal-overlay, input, textarea')) return;
     if (currentTab === 'buses') renderBuses();
     if (currentTab === 'today') renderToday();
   }, 30000);

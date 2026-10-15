@@ -6,6 +6,8 @@
   <meta name="theme-color" content="#0b0f1a" />
   <meta name="description" content="Орбита — умный школьный планер. Расписание, QR-обмен, агент, графики, офлайн." />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="format-detection" content="telephone=no" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Орбита — Школьный планер</title>
   <link rel="manifest" href="manifest.json" />
@@ -14,6 +16,12 @@
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
+  <div id="orbit-splash" class="orbit-splash" aria-hidden="true">
+    <div class="splash-mark">Орбита</div>
+    <div class="splash-sub">Загрузка…</div>
+  </div>
+  <div id="offline-strip" class="offline-strip" hidden>Нет сети — работаем офлайн</div>
+
   <div class="app">
     <header class="app-header">
       <div class="logo">
@@ -26,6 +34,10 @@
         <span>Орбита</span>
       </div>
       <div class="header-actions">
+        <button class="icon-btn" id="btn-undo" title="Отменить" type="button">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 7"/></svg>
+          <span id="undo-badge" class="undo-badge" style="display:none"></span>
+        </button>
         <button class="icon-btn" id="btn-theme" title="Тема">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -155,6 +167,12 @@
           <button class="chip" data-cat="delete" data-cmd="удали всю домашку">Очистить ДЗ</button>
           <button class="chip" data-cat="move" data-cmd="перенеси математику с пн на вт">Перенос урока</button>
         </div>
+        <div class="agent-drop" id="agent-drop">
+          <input type="file" id="agent-file-input" accept=".json,.csv,.xlsx,.xls,.txt,application/json,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden />
+          <button type="button" class="btn btn-secondary btn-block" id="agent-file-btn">📎 Файл или перетащи сюда JSON / Excel / CSV</button>
+          <p class="hint" style="margin:6px 0 0;text-align:center">Агент разложит данные по урокам, автобусам, ДЗ…</p>
+        </div>
+        <div id="agent-live-chips" class="agent-live-chips hidden" aria-live="polite"></div>
         <div class="agent-chat" id="agent-chat"></div>
         <div class="agent-input-row">
           <input type="text" class="input" id="agent-input" placeholder="Команда или вопрос…" autocomplete="off" />
