@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'orbit-planner-v3';
   const BACKUP_KEY = 'orbit-planner-backup-v3';
-  const APP_VERSION = '3.8.0';
+  const APP_VERSION = '3.9.0';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
   const SUBJECTS = [
@@ -93,6 +93,16 @@
     const sign = n < 0 ? '−' : '';
     if (m === 0) return sign + h + ' ч';
     return sign + h + ' ч ' + m + ' мин';
+  }
+
+  function upcomingCount(list, nowMin) {
+    return list.filter(e => {
+      const endT = parseTime(e.end);
+      const startT = parseTime(e.start);
+      if (endT != null) return endT >= nowMin - 1;
+      if (startT != null) return startT + getLessonDuration() >= nowMin - 1;
+      return true;
+    }).length;
   }
 
   function getRelevantBuses(nowMin, mode, limit) {
@@ -431,24 +441,45 @@
     document.getElementById('btn-cancel-home')?.addEventListener('click', () => { goingHome = false; renderToday(); });
 
     const freeMin = calcFreeMinutes(day);
-    document.getElementById('dash-status').innerHTML = `<div class="card" style="display:flex;gap:16px;flex-wrap:wrap"><div><div class="text-muted" style="font-size:0.75rem">Занятий</div><div class="fw-600">${all.length}</div></div><div><div class="text-muted" style="font-size:0.75rem">Свободно</div><div class="fw-600">${Math.floor(freeMin / 60)}ч ${freeMin % 60}м</div></div><div><div class="text-muted" style="font-size:0.75rem">Домашка</div><div class="fw-600">${state.homework.filter(h => !h.done).length}</div></div></div>`;
+    const statusEl = document.getElementById('dash-status');
+    if (goingHome) {
+      const hb = getRelevantBuses(nowMin, 'home', 4);
+      statusEl.innerHTML = `<div class="card" style="display:flex;gap:16px;flex-wrap:wrap"><div><div class="text-muted" style="font-size:0.75rem">Режим</div><div class="fw-600">Домой</div></div><div><div class="text-muted" style="font-size:0.75rem">Рейсов рядом</div><div class="fw-600">${hb.length}</div></div><div><div class="text-muted" style="font-size:0.75rem">Домашка</div><div class="fw-600">${state.homework.filter(h => !h.done).length}</div></div></div>`;
+    } else {
+      statusEl.innerHTML = `<div class="card" style="display:flex;gap:16px;flex-wrap:wrap"><div><div class="text-muted" style="font-size:0.75rem">Занятий</div><div class="fw-600">${upcomingCount(all, nowMin)}</div></div><div><div class="text-muted" style="font-size:0.75rem">Свободно</div><div class="fw-600">${Math.floor(freeMin / 60)}ч ${freeMin % 60}м</div></div><div><div class="text-muted" style="font-size:0.75rem">Домашка</div><div class="fw-600">${state.homework.filter(h => !h.done).length}</div></div></div>`;
+    }
 
     renderDayTimeline(day, all, nowMin);
-    renderWeekCharts();
-    renderWeekGrid();
+    const chartsWrap = document.getElementById('week-charts') || document.querySelector('.week-charts');
+    const gridWrap = document.getElementById('week-grid') || document.querySelector('.week-grid');
+    if (goingHome) {
+      if (chartsWrap) chartsWrap.style.display = 'none';
+      if (gridWrap) gridWrap.style.display = 'none';
+    } else {
+      if (chartsWrap) chartsWrap.style.display = '';
+      if (gridWrap) gridWrap.style.display = '';
+      renderWeekCharts();
+      renderWeekGrid();
+    }
 
     const list = document.getElementById('today-lessons');
-    const displayAll = goingHome ? all.filter(e => {
-      const en = parseTime(e.end) ?? parseTime(e.start);
-      return en != null && en <= nowMin; // only past when going home
-    }) : all;
-    if (!all.length) {
+    // Прошедшие всегда скрыты; в режиме «домой» — весь список занятий скрыт
+    const upcoming = all.filter(e => {
+      const endT = parseTime(e.end);
+      const startT = parseTime(e.start);
+      if (endT != null) return endT >= nowMin - 1;
+      if (startT != null) return startT + getLessonDuration() >= nowMin - 1;
+      return true;
+    });
+    if (goingHome) {
+      list.innerHTML = `<div class="empty"><p>🏠 Режим «домой» — занятия скрыты.<br>Смотри ближайшие автобусы выше и в таймлайне.</p></div>`;
+    } else if (!all.length) {
       list.innerHTML = `<div class="empty"><p>Нет уроков и кружков на сегодня</p></div>`;
-    } else if (goingHome && !displayAll.length) {
-      list.innerHTML = `<div class="empty"><p>Режим «домой» — оставшиеся уроки скрыты. Смотри автобус выше.</p></div>`;
+    } else if (!upcoming.length) {
+      list.innerHTML = `<div class="empty"><p>Все занятия на сегодня уже прошли</p></div>`;
     } else {
       let html = '';
-      const loopList = goingHome ? displayAll : all;
+      const loopList = upcoming;
       for (let i = 0; i < loopList.length; i++) {
         const e = loopList[i];
         const badge = e._type === 'club' ? '<span class="card-badge badge-club">Кружок</span>' : '<span class="card-badge">Урок</span>';
@@ -489,45 +520,74 @@
     const el = document.getElementById('day-timeline');
     if (!el) return;
     const items = [];
-    // Lessons / clubs always
+
+    // Режим «домой»: только ближайшие автобусы домой, без уроков/кружков/прошлого
+    if (goingHome) {
+      const buses = getRelevantBuses(nowMin, 'home', 4);
+      if (!buses.length) {
+        el.innerHTML = '<div class="text-muted" style="padding:12px">Нет ближайших автобусов на 2 часа. Добавь рейсы во вкладке «Автобус».</div>';
+        return;
+      }
+      buses.forEach(b => {
+        const t = parseTime(b.time);
+        const walk = Number(b.walkMin) || 0;
+        const leaveIn = t != null ? t - walk - nowMin : null;
+        const route = (b.from && b.to) ? (b.from + ' → ' + b.to) : (b.to || b.destination || b.from || '');
+        items.push({
+          time: b.time, min: t, type: 'bus',
+          title: 'Автобус ' + (b.number || ''),
+          meta: route + (leaveIn != null ? ' · выйти через ' + formatDurationMin(leaveIn) : '')
+        });
+      });
+      el.innerHTML = items.map(it =>
+        `<div class="tl-item tl-bus tl-now"><div class="tl-time">${escapeHtml(it.time)}</div><div class="tl-title">${escapeHtml(it.title)}</div><div class="tl-meta">${escapeHtml(it.meta)}</div></div>`
+      ).join('');
+      return;
+    }
+
+    // Обычный режим: только будущие и текущие занятия (прошедшие скрыты)
     all.forEach(e => {
-      const t = parseTime(e.start); if (t == null) return;
+      const t = parseTime(e.start);
+      if (t == null) return;
+      const endT = parseTime(e.end);
+      // скрыть если уже закончилось
+      if (endT != null && endT < nowMin - 1) return;
+      if (endT == null && t < nowMin - getLessonDuration()) return;
       items.push({
         time: e.start, min: t, type: e._type,
         title: e._title,
         meta: (e.start || '') + (e.end ? ' – ' + e.end : '') + (e._place ? ' · ' + e._place : '')
       });
     });
-    // Buses: only upcoming in next 2h, deduped; morning vs home by mode
+
     let mode = 'all';
-    if (goingHome) mode = 'home';
-    else {
-      const bounds = schoolDayBounds(day);
-      if (bounds && nowMin < bounds.start - 5) mode = 'morning';
-      else if (bounds && nowMin >= bounds.end) mode = 'home';
-      else if (bounds && nowMin >= bounds.start && nowMin < bounds.end) mode = 'during';
-    }
-    // During lessons: fewer or no buses on timeline (unless setting allows)
+    const bounds = schoolDayBounds(day);
+    if (bounds && nowMin < bounds.start - 5) mode = 'morning';
+    else if (bounds && nowMin >= bounds.end) mode = 'home';
+    else if (bounds && nowMin >= bounds.start && nowMin < bounds.end) mode = 'during';
+
+    // Автобусы: только актуальные; во время уроков — по настройке
     if (mode !== 'during' || state.settings.hideBusDuringLessons === false) {
       const buses = getRelevantBuses(nowMin, mode === 'during' ? 'all' : mode, mode === 'during' ? 2 : 4);
       buses.forEach(b => {
         const t = parseTime(b.time);
+        if (t == null || t < nowMin - 1) return;
         items.push({
           time: b.time, min: t, type: 'bus',
-          title: `Автобус ${b.number || ''}`,
+          title: 'Автобус ' + (b.number || ''),
           meta: (b.from && b.to) ? (b.from + ' → ' + b.to) : (b.to || b.destination || b.from || '')
         });
       });
     }
+
     items.sort((a, b) => a.min - b.min);
     if (!items.length) {
-      el.innerHTML = '<div class="text-muted" style="padding:8px">Нет событий</div>';
+      el.innerHTML = '<div class="text-muted" style="padding:12px">Нет предстоящих событий</div>';
       return;
     }
     el.innerHTML = items.map(it => {
-      const past = it.min < nowMin - 2;
-      const isNow = it.min <= nowMin && it.min > nowMin - 30;
-      return `<div class="tl-item tl-${it.type || 'lesson'}${past ? ' tl-past' : ''}${isNow ? ' tl-now' : ''}"><div class="tl-time">${escapeHtml(it.time)}</div><div class="tl-title">${escapeHtml(it.title)}</div><div class="tl-meta">${escapeHtml(it.meta)}</div></div>`;
+      const isNow = it.min <= nowMin && it.min > nowMin - 40;
+      return `<div class="tl-item tl-${it.type || 'lesson'}${isNow ? ' tl-now' : ''}"><div class="tl-time">${escapeHtml(it.time)}</div><div class="tl-title">${escapeHtml(it.title)}</div><div class="tl-meta">${escapeHtml(it.meta)}</div></div>`;
     }).join('');
   }
 

@@ -28,7 +28,10 @@
   --app-font-size: 16px;
   --nav-h: 64px;
   --header-h: 56px;
+  --safe-bottom: constant(safe-area-inset-bottom, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: constant(safe-area-inset-top, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
   --gradient-accent: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%);
   --gradient-hero: linear-gradient(145deg, #1e1b4b 0%, #0f172a 50%, #0c4a6e 100%);
 }
@@ -82,6 +85,7 @@ body {
 }
 
 header.app-header {
+  padding-top: max(8px, var(--safe-top));
   position: sticky;
   top: 0;
   z-index: 50;
@@ -145,14 +149,20 @@ nav.main-nav {
   transform: translateX(-50%);
   width: 100%;
   max-width: 480px;
+  /* Высота контента кнопок + системная шторка — кнопки не уезжают под индикатор */
   height: calc(var(--nav-h) + var(--safe-bottom));
-  padding-bottom: var(--safe-bottom);
+  min-height: calc(var(--nav-h) + var(--safe-bottom));
+  padding-bottom: max(var(--safe-bottom), 0px);
+  padding-top: 4px;
   display: flex;
-  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  align-items: flex-start; /* кнопки сверху, шторка снизу */
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-top: 1px solid var(--border);
-  z-index: 100;
+  z-index: 1000;
+  /* не даём iOS «съедать» тапы */
+  touch-action: manipulation;
 }
 
 .nav-btn {
@@ -169,7 +179,11 @@ nav.main-nav {
   font-weight: 500;
   cursor: pointer;
   transition: color 0.2s;
-  padding: 6px 2px;
+  padding: 8px 2px;
+  min-height: 48px; /* удобная зона нажатия */
+  min-width: 44px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .nav-btn svg { width: 22px; height: 22px; stroke-width: 1.8; }
@@ -179,7 +193,7 @@ nav.main-nav {
 /* ─── Main ─── */
 main.main {
   flex: 1;
-  padding: 12px 16px calc(var(--nav-h) + var(--safe-bottom) + 20px);
+  padding: 12px 16px calc(var(--nav-h) + var(--safe-bottom) + 28px);
 }
 
 .tab { display: none; animation: fadeIn 0.25s ease; }
