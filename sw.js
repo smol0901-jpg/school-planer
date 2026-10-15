@@ -1,4 +1,4 @@
-const CACHE = 'orbit-v3.0.0';
+const CACHE = 'orbit-v3.8.0';
 const ASSETS = [
   './',
   './index.html',
@@ -7,7 +7,10 @@ const ASSETS = [
   './manifest.json',
   './version.json',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './js/xlsx.mini.min.js',
+  './js/qrcode.js',
+  './js/jsQR.js'
 ];
 
 self.addEventListener('install', e => {
