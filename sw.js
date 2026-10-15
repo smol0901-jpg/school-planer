@@ -1,4 +1,4 @@
-const CACHE = 'orbit-v3.9.0';
+const CACHE = 'orbit-v3.10.0';
 const ASSETS = [
   './',
   './index.html',

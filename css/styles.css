@@ -85,19 +85,46 @@ body {
 }
 
 header.app-header {
-  padding-top: max(8px, var(--safe-top));
   position: sticky;
   top: 0;
-  z-index: 50;
-  height: var(--header-h);
+  z-index: 1100;
+  /* высота контента + вырез/Dynamic Island */
+  min-height: calc(var(--header-h) + var(--safe-top));
+  height: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  padding: var(--safe-top) 12px 0;
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border);
+}
+header.app-header .header-inner,
+header.app-header {
+  /* кнопки темы/профиля всегда кликабельны */
+}
+header.app-header .icon-btn {
+  position: relative;
+  z-index: 2;
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+}
+header.app-header .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--header-h);
+  padding-bottom: 4px;
+}
+header.app-header .logo {
+  min-height: var(--header-h);
+  display: flex;
+  align-items: center;
+  padding-bottom: 4px;
 }
 
 .logo {
@@ -749,12 +776,18 @@ label {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   width: 100%;
   max-width: 480px;
-  max-height: 90dvh;
+  max-height: min(92dvh, 92vh);
   display: flex;
   flex-direction: column;
   animation: slideUp 0.28s ease;
   border: 1px solid var(--border);
   border-bottom: none;
+  overflow: hidden;
+}
+.modal-overlay {
+  z-index: 2000;
+  padding-bottom: 0;
+  align-items: flex-end;
 }
 
 @keyframes slideUp {
@@ -794,14 +827,33 @@ label {
 }
 
 .modal-footer {
-  padding: 12px 18px calc(16px + var(--safe-bottom));
+  padding: 12px 18px calc(20px + var(--safe-bottom));
   display: flex;
   gap: 10px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+  background: var(--bg-elevated);
+  position: relative;
+  z-index: 2;
+  min-height: calc(56px + var(--safe-bottom));
+  box-sizing: border-box;
 }
 
-.modal-footer .btn { flex: 1; }
+.modal-footer .btn {
+  flex: 1;
+  min-height: 48px;
+  font-weight: 600;
+}
+.modal-footer:empty {
+  display: none;
+}
+.modal-body {
+  padding: 8px 18px 16px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0; /* важно для flex-scroll */
+  -webkit-overflow-scrolling: touch;
+}
 
 /* ─── Profile tabs ─── */
 .ptabs {
@@ -1353,3 +1405,11 @@ nav.main-nav .nav-btn {
 .btn-danger:active {
   background: color-mix(in srgb, #ef4444 35%, var(--bg-card));
 }
+
+.bus-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.bus-filters .input { font-size: 0.85rem; }
+.card.bus-past { opacity: 0.55; }

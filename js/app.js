@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'orbit-planner-v3';
   const BACKUP_KEY = 'orbit-planner-backup-v3';
-  const APP_VERSION = '3.9.0';
+  const APP_VERSION = '3.10.0';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
   const SUBJECTS = [
@@ -77,9 +77,14 @@
       return t === sl || tokens.some(tok => tok === sl || (tok.length >= 4 && sl.startsWith(tok)));
     });
     if (found) return found;
-    // free text subject only if it looks like a name (not a sentence)
-    if (tokens.length <= 3 && !/^(очисти|удали|добавь|покажи)/.test(t) && raw.trim().length >= 2) {
-      return raw.trim().replace(/^./, c => c.toUpperCase());
+    // Не считать свободный текст предметом (привет, ок, спасибо и т.д.)
+    const blocked = /^(привет|здравств|хай|hello|hi|ку|йо|спасибо|пожалуйста|ок|окей|ладно|да|нет|хорошо|понял|ясно|стоп|отмена|help|помощь|агент|что|как|когда|где|зачем|почему|автобус|маршрут|домашк|дз|день\s*рожден|др)/;
+    if (blocked.test(t)) return null;
+    // Свободный текст — только если похож на название предмета из списка или 1 короткое слово не из blocked
+    if (tokens.length === 1 && tokens[0].length >= 3 && !blocked.test(tokens[0])) {
+      // только если есть пересечение с известными предметами
+      const soft = SUBJECTS.find(s => s.toLowerCase().includes(tokens[0]) || tokens[0].includes(s.toLowerCase().slice(0, 4)));
+      if (soft) return soft;
     }
     return null;
   }
@@ -150,7 +155,9 @@
   let agentHistory = [];
   let agentPending = null; // { type: 'add_lesson'|'add_club'|'learn', subject?, day?, step? }
   let agentKnowledge = {}; // learned phrases -> meaning (from IndexedDB)
-  let goingHome = false; // user pressed "Я домой" / finished early
+  let goingHome = false; // en route home — show home buses
+  let atHome = false; // arrived home — hide buses until tomorrow / next morning
+  let homeLogs = []; // { ts, time }
 
   let diaryMood = 3;
   let lastQrPayload = '';
@@ -389,14 +396,25 @@
     }
 
     // Hero priority: going home bus > morning bus > current lesson > next > done
-    const homeBtn = (current || next) && !goingHome
-      ? `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-          <button type="button" class="btn btn-secondary" id="btn-going-home" style="flex:1;font-size:0.8rem">🏠 Я домой</button>
-          <button type="button" class="btn btn-secondary" id="btn-finished" style="flex:1;font-size:0.8rem">✓ Занятия закончил</button>
-        </div>` : (goingHome ? `<div style="margin-top:10px"><button type="button" class="btn btn-secondary btn-block" id="btn-cancel-home" style="font-size:0.8rem">Вернуть расписание дня</button></div>` : '');
+    const homeBtn = atHome
+      ? `<div style="margin-top:10px"><button type="button" class="btn btn-secondary btn-block" id="btn-cancel-home" style="font-size:0.8rem">Снова в пути / сбросить «дома»</button></div>`
+      : (goingHome
+        ? `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button type="button" class="btn btn-primary" id="btn-arrived-home" style="flex:1;font-size:0.8rem">🏡 Я дома</button>
+            <button type="button" class="btn btn-secondary" id="btn-cancel-home" style="flex:1;font-size:0.8rem">Отмена</button>
+          </div>`
+        : `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button type="button" class="btn btn-secondary" id="btn-going-home" style="flex:1;font-size:0.8rem">🏠 Еду домой</button>
+            <button type="button" class="btn btn-secondary" id="btn-finished" style="flex:1;font-size:0.8rem">✓ Занятия закончил</button>
+          </div>`);
 
-    if (goingHome || (showBuses && busFilter === 'home' && !current)) {
-      const homeBuses = getRelevantBuses(nowMin, 'home', 4);
+    if (atHome) {
+      const last = homeLogs.length ? homeLogs[homeLogs.length - 1] : null;
+      hero.innerHTML = `<div class="hero-card"><div class="hero-label">Дома</div>
+        <div class="hero-title">Ты дома${last ? ' с ' + last.time : ''}</div>
+        <div class="hero-sub">Автобусы скрыты до следующего выезда. Завтра снова покажем утренние.</div>${homeBtn}</div>`;
+    } else if (goingHome || (showBuses && busFilter === 'home' && !current)) {
+      const homeBuses = getRelevantBuses(nowMin, 'home', 3);
       if (homeBuses.length) {
         const lines = homeBuses.map(b => {
           const t = parseTime(b.time);
@@ -405,11 +423,11 @@
           const route = (b.from && b.to) ? `${b.from} → ${b.to}` : (b.to || b.destination || '');
           return `№ ${b.number || '—'} в ${b.time || ''} (${leaveIn != null ? 'выйти через ' + formatDurationMin(leaveIn) : '—'}) · ${route}`;
         });
-        hero.innerHTML = `<div class="hero-card"><div class="hero-label">${goingHome ? 'Едем домой · ближайшие' : 'После занятий'}</div>
-          <div class="hero-title">${lines[0]}</div>
+        hero.innerHTML = `<div class="hero-card"><div class="hero-label">${goingHome ? 'Едем домой · 3 ближайших' : 'После занятий · автобусы'}</div>
+          <div class="hero-title">${escapeHtml(lines[0])}</div>
           <div class="hero-sub">${lines.slice(1).map(l => escapeHtml(l)).join('<br>')}</div>${homeBtn}</div>`;
       } else {
-        hero.innerHTML = `<div class="hero-card"><div class="hero-label">${goingHome ? 'Едем домой' : 'День завершён'}</div><div class="hero-title">Нет ближайших автобусов (2 ч). Добавь рейсы во вкладке Автобус</div>${homeBtn}</div>`;
+        hero.innerHTML = `<div class="hero-card"><div class="hero-label">${goingHome ? 'Едем домой' : 'День завершён'}</div><div class="hero-title">Нет ближайших автобусов на 2 часа</div>${homeBtn}</div>`;
       }
     } else if (bestMorningBus && firstEvent && !current) {
       const bus = bestMorningBus.bus;
@@ -436,15 +454,26 @@
       hero.innerHTML = `<div class="hero-card"><div class="hero-label">Свободный день</div><div class="hero-title">Нет занятий</div></div>`;
     }
 
-    document.getElementById('btn-going-home')?.addEventListener('click', () => { goingHome = true; renderToday(); toast('Режим «домой» — ближайшие автобусы'); });
-    document.getElementById('btn-finished')?.addEventListener('click', () => { goingHome = true; renderToday(); toast('Занятия завершены'); });
-    document.getElementById('btn-cancel-home')?.addEventListener('click', () => { goingHome = false; renderToday(); });
+    document.getElementById('btn-going-home')?.addEventListener('click', () => { goingHome = true; atHome = false; renderToday(); toast('Едем домой — 3 ближайших автобуса'); });
+    document.getElementById('btn-finished')?.addEventListener('click', () => { goingHome = true; atHome = false; renderToday(); toast('Занятия завершены'); });
+    document.getElementById('btn-arrived-home')?.addEventListener('click', () => {
+      atHome = true; goingHome = false;
+      const now = new Date();
+      const time = formatTime(now.getHours() * 60 + now.getMinutes());
+      homeLogs.push({ ts: Date.now(), time, date: now.toISOString().slice(0, 10) });
+      if (homeLogs.length > 60) homeLogs = homeLogs.slice(-40);
+      try { localStorage.setItem('orbit-home-logs', JSON.stringify(homeLogs)); } catch (e) {}
+      renderToday(); toast('Записал: дома в ' + time);
+    });
+    document.getElementById('btn-cancel-home')?.addEventListener('click', () => { goingHome = false; atHome = false; renderToday(); });
 
     const freeMin = calcFreeMinutes(day);
     const statusEl = document.getElementById('dash-status');
-    if (goingHome) {
-      const hb = getRelevantBuses(nowMin, 'home', 4);
-      statusEl.innerHTML = `<div class="card" style="display:flex;gap:16px;flex-wrap:wrap"><div><div class="text-muted" style="font-size:0.75rem">Режим</div><div class="fw-600">Домой</div></div><div><div class="text-muted" style="font-size:0.75rem">Рейсов рядом</div><div class="fw-600">${hb.length}</div></div><div><div class="text-muted" style="font-size:0.75rem">Домашка</div><div class="fw-600">${state.homework.filter(h => !h.done).length}</div></div></div>`;
+    if (atHome) {
+      statusEl.innerHTML = `<div class="card" style="display:flex;gap:16px;flex-wrap:wrap"><div><div class="text-muted" style="font-size:0.75rem">Статус</div><div class="fw-600">Дома</div></div><div><div class="text-muted" style="font-size:0.75rem">Домашка</div><div class="fw-600">${state.homework.filter(h => !h.done).length}</div></div></div>`;
+    } else if (goingHome) {
+      const hb = getRelevantBuses(nowMin, 'home', 3);
+      statusEl.innerHTML = `<div class="card" style="display:flex;gap:16px;flex-wrap:wrap"><div><div class="text-muted" style="font-size:0.75rem">Режим</div><div class="fw-600">Еду домой</div></div><div><div class="text-muted" style="font-size:0.75rem">Рейсов</div><div class="fw-600">${hb.length}</div></div><div><div class="text-muted" style="font-size:0.75rem">Домашка</div><div class="fw-600">${state.homework.filter(h => !h.done).length}</div></div></div>`;
     } else {
       statusEl.innerHTML = `<div class="card" style="display:flex;gap:16px;flex-wrap:wrap"><div><div class="text-muted" style="font-size:0.75rem">Занятий</div><div class="fw-600">${upcomingCount(all, nowMin)}</div></div><div><div class="text-muted" style="font-size:0.75rem">Свободно</div><div class="fw-600">${Math.floor(freeMin / 60)}ч ${freeMin % 60}м</div></div><div><div class="text-muted" style="font-size:0.75rem">Домашка</div><div class="fw-600">${state.homework.filter(h => !h.done).length}</div></div></div>`;
     }
@@ -471,8 +500,10 @@
       if (startT != null) return startT + getLessonDuration() >= nowMin - 1;
       return true;
     });
-    if (goingHome) {
-      list.innerHTML = `<div class="empty"><p>🏠 Режим «домой» — занятия скрыты.<br>Смотри ближайшие автобусы выше и в таймлайне.</p></div>`;
+    if (atHome) {
+      list.innerHTML = `<div class="empty"><p>🏡 Ты дома. Хорошего вечера!</p></div>`;
+    } else if (goingHome) {
+      list.innerHTML = `<div class="empty"><p>🏠 Еду домой — занятия скрыты.<br>Три ближайших автобуса — на карточке выше.</p></div>`;
     } else if (!all.length) {
       list.innerHTML = `<div class="empty"><p>Нет уроков и кружков на сегодня</p></div>`;
     } else if (!upcoming.length) {
@@ -521,7 +552,12 @@
     if (!el) return;
     const items = [];
 
-    // Режим «домой»: только ближайшие автобусы домой, без уроков/кружков/прошлого
+    if (atHome) {
+      el.innerHTML = '<div class="text-muted" style="padding:12px">🏡 Ты дома — автобусы на сегодня скрыты. «Сбросить дома» на карточке выше.</div>';
+      return;
+    }
+
+    // Режим «еду домой»: только ближайшие автобусы домой
     if (goingHome) {
       const buses = getRelevantBuses(nowMin, 'home', 4);
       if (!buses.length) {
@@ -1089,56 +1125,112 @@
   });
 
   // ─── BUSES ───
+  let busFilterNumber = '';
+  let busFilterDir = 'all'; // all | school | home
+  let busShowPast = false;
+
+  function busDirection(b) {
+    const to = (b.to || b.destination || '').toLowerCase();
+    const from = (b.from || '').toLowerCase();
+    if (/дом|домой|рейзин|home|пос[её]л/.test(to)) return 'home';
+    if (/школ|гимназ|лицей|school/.test(to) || /дом|домой|рейзин/.test(from)) return 'school';
+    if (/школ|гимназ|лицей/.test(from)) return 'home';
+    return 'other';
+  }
+
   function renderBuses() {
     const list = document.getElementById('buses-list');
+    if (!list) return;
     if (!state.buses.length) {
       list.innerHTML = `<div class="empty">
         <p>Маршрутов пока нет — добавь свои.</p>
-        <p class="hint" style="margin-top:8px">Укажи откуда → куда, время и сколько идти до остановки. Можно несколько рейсов и пересадки.</p>
+        <p class="hint" style="margin-top:8px">Укажи откуда → куда, время и сколько идти до остановки.</p>
       </div>`;
       return;
     }
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    const numbers = [...new Set(state.buses.map(b => b.number || '').filter(Boolean))].sort();
+
+    // filters UI
+    let html = `<div class="bus-filters">
+      <select class="input" id="bus-dir" style="flex:1">
+        <option value="all"${busFilterDir==='all'?' selected':''}>Все направления</option>
+        <option value="school"${busFilterDir==='school'?' selected':''}>В школу</option>
+        <option value="home"${busFilterDir==='home'?' selected':''}>Домой / из школы</option>
+      </select>
+      <select class="input" id="bus-num" style="flex:1">
+        <option value="">Все номера</option>
+        ${numbers.map(n => `<option value="${escapeHtml(n)}"${busFilterNumber===n?' selected':''}>№ ${escapeHtml(n)}</option>`).join('')}
+      </select>
+    </div>`;
+
     const seen = new Set();
-    const sorted = [...state.buses].sort((a, b) => (a.time || '').localeCompare(b.time || '')).filter(b => {
-      const key = [b.number, b.time, b.from || '', b.to || b.destination || ''].join('|');
+    const unique = [...state.buses].sort((a,b)=>(a.time||'').localeCompare(b.time||'')).filter(b => {
+      const key = [b.number, b.time, b.from||'', b.to||b.destination||''].join('|');
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-    list.innerHTML = sorted.map(b => {
+
+    const filtered = unique.filter(b => {
+      if (busFilterNumber && (b.number || '') !== busFilterNumber) return false;
+      if (busFilterDir !== 'all' && busDirection(b) !== busFilterDir && busDirection(b) !== 'other') return false;
+      if (busFilterDir === 'school' && busDirection(b) === 'home') return false;
+      if (busFilterDir === 'home' && busDirection(b) === 'school') return false;
+      return true;
+    });
+
+    const upcoming = filtered.filter(b => {
+      const t = parseTime(b.time);
+      return t != null && t >= nowMin - 2;
+    });
+    const past = filtered.filter(b => {
+      const t = parseTime(b.time);
+      return t != null && t < nowMin - 2;
+    });
+
+    const card = (b, isPast) => {
       const until = minutesUntil(b.time);
       const walk = Number(b.walkMin) || 0;
       const leaveIn = until !== null ? until - walk : null;
       let countdown = '';
-      if (until !== null) {
-        if (until < -5) countdown = `<span class="bus-countdown past">ушёл</span>`;
-        else if (leaveIn !== null && leaveIn <= 0 && until >= 0) countdown = `<span class="bus-countdown urgent">выходи сейчас</span>`;
+      if (isPast) countdown = `<span class="bus-countdown past">ушёл</span>`;
+      else if (until !== null) {
+        if (leaveIn !== null && leaveIn <= 0 && until >= 0) countdown = `<span class="bus-countdown urgent">выходи сейчас</span>`;
         else if (leaveIn !== null && leaveIn > 0) countdown = `<span class="bus-countdown ${leaveIn <= 10 ? 'urgent' : ''}">выйти через ${formatDurationMin(leaveIn)}</span>`;
         else if (until >= 0) countdown = `<span class="bus-countdown">через ${formatDurationMin(until)}</span>`;
-        else countdown = `<span class="bus-countdown past">ушёл</span>`;
       }
-      const from = b.from || b.fromStop || '';
+      const from = b.from || '';
       const to = b.to || b.destination || '';
       const route = from && to ? `${escapeHtml(from)} → ${escapeHtml(to)}` : escapeHtml(to || from || '');
-      let transfer = '';
-      if (b.transferNumber || b.transferTime) {
-        const tf = b.transferFrom || '';
-        const tt = b.transferTo || '';
-        transfer = `<div class="card-meta" style="margin-top:4px">↔ Пересадка: № ${escapeHtml(b.transferNumber || '?')} в ${escapeHtml(b.transferTime || '?')}${tf || tt ? ' · ' + escapeHtml(tf) + ' → ' + escapeHtml(tt) : ''}</div>`;
-      }
-      const leaveAt = (until != null && walk) ? formatTime((parseTime(b.time) || 0) - walk) : '';
-      return `<div class="card" data-id="${b.id}" style="cursor:pointer">
+      const dir = busDirection(b);
+      const dirLabel = dir === 'school' ? ' → школа' : dir === 'home' ? ' → домой' : '';
+      return `<div class="card${isPast ? ' bus-past' : ''}" data-id="${b.id}" style="cursor:pointer">
         <div class="card-row">
-          <div class="card-time">${escapeHtml(b.time || '—')}${leaveAt ? '<br><span style="font-weight:400;color:var(--text-dim);font-size:0.7rem">выход ' + leaveAt + '</span>' : ''}</div>
+          <div class="card-time">${escapeHtml(b.time || '—')}</div>
           <div class="card-body">
             <div class="card-title">№ ${escapeHtml(b.number || '—')} ${countdown}</div>
-            <div class="card-meta">${route}${walk ? ' · до остановки ' + walk + ' мин' : ''}</div>
-            ${transfer}
+            <div class="card-meta">${route}${dirLabel}${walk ? ' · пешком ' + walk + ' мин' : ''}</div>
             ${b.notes ? `<div class="card-meta">${escapeHtml(b.notes)}</div>` : ''}
           </div>
         </div>
       </div>`;
-    }).join('');
+    };
+
+    html += `<p class="hint mb-8">Актуальные до конца дня (${upcoming.length})</p>`;
+    html += upcoming.length ? upcoming.map(b => card(b, false)).join('') : `<div class="empty"><p>Нет актуальных рейсов по фильтру</p></div>`;
+
+    if (past.length) {
+      html += `<button type="button" class="btn btn-secondary btn-block mt-12" id="bus-toggle-past">${busShowPast ? 'Скрыть ушедшие' : 'Показать ушедшие (' + past.length + ')'}</button>`;
+      if (busShowPast) {
+        html += `<p class="hint mt-8 mb-8">Уже ушли</p>` + past.map(b => card(b, true)).join('');
+      }
+    }
+
+    list.innerHTML = html;
+    document.getElementById('bus-dir')?.addEventListener('change', e => { busFilterDir = e.target.value; renderBuses(); });
+    document.getElementById('bus-num')?.addEventListener('change', e => { busFilterNumber = e.target.value; renderBuses(); });
+    document.getElementById('bus-toggle-past')?.addEventListener('click', () => { busShowPast = !busShowPast; renderBuses(); });
     list.querySelectorAll('.card[data-id]').forEach(c => { c.onclick = () => openBusModal(c.dataset.id); });
   }
 
@@ -1616,6 +1708,14 @@
       return;
     }
 
+    // 2a) Greetings & chitchat — never create lessons
+    if (/^(привет|здравствуй|здравствуйте|хай|hello|hi|ку|йо)[\s\!\.]*$/i.test(raw.trim()) || /^(спасибо|пока|добрый день|доброе утро|добрый вечер)[\s\!\.]*$/i.test(raw.trim())) {
+      reply = `Привет${state.profile.name ? ', ' + state.profile.name : ''}! Я Агент Орбита.\nМогу: уроки, автобусы, ДЗ, дни рождения.\nНапиши «помощь» или «автобусы сейчас».`;
+      agentHistory.push({ role: 'bot', text: reply });
+      renderAgent();
+      return;
+    }
+
     // 2) Short subject-only or "X добавь" after context
     const addOnly = /^(добавь|добавить|добавь урок|\+ урок|\+)$/i.test(raw);
     const subjectOnly = resolveSubject(raw);
@@ -1654,7 +1754,7 @@
     }
 
     // bare subject word while not pending - offer to add
-    if (subjectOnly && raw.length < 40 && !/удали|очист|убери|перенес|покажи|сколько|что|когда|помощь|добавь|нагрузк|свободн|статистик|я домой|закончил/.test(lower)) {
+    if (subjectOnly && raw.length < 40 && !/удали|очист|убери|перенес|покажи|сколько|что|когда|помощь|добавь|нагрузк|свободн|статистик|я домой|закончил|привет|здравств|хай|hello|спасибо|автобус|маршрут|домашк|др|день рожден/.test(lower)) {
       agentPending = { type: 'add_lesson', step: 'day', subject: subjectOnly };
       reply = `Добавить «${subjectOnly}»?\nНапиши день и время: «пн 8:30» или «отмена»`;
       agentHistory.push({ role: 'bot', text: reply });
@@ -1900,12 +2000,50 @@
     } else if (/^удали$|^удалить$|^удали\s*уроки$/.test(lower)) {
       agentPending = { type: 'delete_pick' };
       reply = 'Что удалить?\n• день: «пн»\n• несколько: «пн вт ср»\n• «всю неделю»\n• «расписание» — всё\n• «отмена»';
-    } else if (/я домой|я поехал|закончил|я закончил|поехал домой/.test(lower)) {
-      goingHome = true;
-      reply = 'Ок, режим «домой». На «Сегодня» — ближайшие автобусы домой. «Вернуть день» — сбросить.';
-    } else if (/вернуть день|вернуть расписание|не домой/.test(lower)) {
-      goingHome = false;
-      reply = 'Снова полный день занятий.';
+    } else if (/я дома|уже дома|приехал домой/.test(lower)) {
+      atHome = true; goingHome = false;
+      const now = new Date();
+      const time = formatTime(now.getHours() * 60 + now.getMinutes());
+      homeLogs.push({ ts: Date.now(), time, date: now.toISOString().slice(0, 10) });
+      try { localStorage.setItem('orbit-home-logs', JSON.stringify(homeLogs)); } catch (e) {}
+      reply = `Отметил: дома в ${time}. Автобусы скрыты.`;
+    } else if (/я домой|я поехал|закончил|я закончил|поехал домой|еду домой/.test(lower)) {
+      goingHome = true; atHome = false;
+      const buses = getRelevantBuses(new Date().getHours()*60+new Date().getMinutes(), 'home', 3);
+      reply = 'Режим «еду домой». Ближайшие:\n' + (buses.map(b => `• №${b.number} в ${b.time}`).join('\n') || '• нет рейсов на 2 ч');
+    } else if (/вернуть день|вернуть расписание|не домой|сброс дома/.test(lower)) {
+      goingHome = false; atHome = false;
+      reply = 'Снова обычный день.';
+    } else if (/автобус|рейс|маршрут/.test(lower)) {
+      const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+      let mode = /дом|домой|рейзин/.test(lower) ? 'home' : (/школ/.test(lower) ? 'school' : 'all');
+      const numM = lower.match(/№?\s*(\d{2,4})/);
+      let buses = getRelevantBuses(nowMin, mode === 'all' ? 'all' : mode, 8);
+      if (numM) buses = state.buses.filter(b => (b.number||'') === numM[1] && (parseTime(b.time)||0) >= nowMin - 2).sort((a,b)=>(a.time||'').localeCompare(b.time||'')).slice(0, 8);
+      if (!buses.length) reply = 'Нет актуальных автобусов. Добавь во вкладке «Автобус».';
+      else reply = 'Автобусы:\n' + buses.map(b => {
+        const t = parseTime(b.time); const walk = Number(b.walkMin)||0;
+        const leave = t != null ? t - walk - nowMin : null;
+        const route = (b.from && b.to) ? `${b.from} → ${b.to}` : (b.to||b.destination||'');
+        return `• №${b.number} в ${b.time}${leave!=null?', выйти через '+formatDurationMin(leave):''} · ${route}`;
+      }).join('\n');
+    } else if (/день\s*рожден|др|именин/.test(lower)) {
+      const today = new Date();
+      const md = (d) => { const x = new Date(d); return (x.getMonth()+1)*100 + x.getDate(); };
+      const tmd = (today.getMonth()+1)*100 + today.getDate();
+      const upcoming = (state.people||[]).filter(p => p.birthday).map(p => {
+        let pmd = md(p.birthday);
+        let delta = pmd - tmd;
+        if (delta < 0) delta += 365;
+        return { name: p.name, birthday: p.birthday, delta };
+      }).sort((a,b) => a.delta - b.delta);
+      if (!upcoming.length) reply = 'Нет дней рождения в списке «Люди».';
+      else {
+        const soon = upcoming.filter(u => u.delta <= 30);
+        reply = (soon.length ? 'Скоро ДР:\n' : 'Ближайшие ДР:\n') + (soon.length ? soon : upcoming.slice(0,5)).map(u =>
+          `• ${u.name} — ${u.birthday.slice(5)}${u.delta===0?' (сегодня!)':u.delta===1?' (завтра)':' через '+u.delta+' дн.'}`
+        ).join('\n');
+      }
     } else if (/привет|здравств|хай|hello/.test(lower)) {
       reply = `Привет${state.profile.name ? ', ' + state.profile.name : ''}! Напиши «добавь» или «мат» — помогу.`;
 
@@ -3066,6 +3204,10 @@ day: 0=Пн … 6=Вс. Время HH:MM.
   // ─── Init ───
   load();
   loadAgentKnowledge();
+  try {
+    const hl = localStorage.getItem('orbit-home-logs');
+    if (hl) homeLogs = JSON.parse(hl) || [];
+  } catch (e) {}
   applyTheme();
   render();
   setInterval(() => {
