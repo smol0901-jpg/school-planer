@@ -1,96 +1,46 @@
 <!DOCTYPE html>
-<html lang="ru" data-theme="dark">
+<html lang="ru" data-theme="dark" data-brand="orbit">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-  <meta name="theme-color" content="#0b0f1a" />
-  <meta name="description" content="Орбита — умный школьный планер. Расписание, QR-обмен, агент, графики, офлайн." />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#090c17" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="description" content="Орбита — умный школьный планер: расписание, автобусы под уроки, агент, контакты, обмен данными. Работает офлайн." />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="format-detection" content="telephone=no" />
+  <meta name="apple-mobile-web-app-title" content="Орбита" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="msapplication-TileColor" content="#090c17" />
+  <meta name="msapplication-config" content="browserconfig.xml" />
   <title>Орбита — Школьный планер</title>
   <link rel="manifest" href="manifest.json" />
-  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="icon" id="o-favicon" type="image/svg+xml" href="icons/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/orbit4.css" />
 </head>
-<body>
-  <div id="orbit-splash" class="orbit-splash" aria-hidden="true">
-    <div class="splash-mark">Орбита</div>
-    <div class="splash-sub">Загрузка…</div>
-  </div>
-  <div id="offline-strip" class="offline-strip" hidden>Нет сети — работаем офлайн</div>
-
-  <div class="app">
-    <header class="app-header">
-      <div class="logo">
-        <div class="logo-mark">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
-          </svg>
+<body data-tab="today">
+  <div class="app" id="app">
+    <aside class="rail" id="rail" aria-label="Разделы">
+      <div class="rail-brand"><span data-brand-logo="38"></span><div><b data-brand-name>Орбита</b><small data-brand-tag>Школьный планер</small></div></div>
+      <nav class="rail-nav"><button class="nav-btn active" data-tab="today" title="Сегодня"><span class="nav-ic" data-ic="home"></span><span class="nav-l">Сегодня</span></button><button class="nav-btn" data-tab="schedule" title="Расписание"><span class="nav-ic" data-ic="calendar"></span><span class="nav-l">Расписание</span></button><button class="nav-btn" data-tab="buses" title="Автобусы"><span class="nav-ic" data-ic="bus"></span><span class="nav-l">Автобусы</span></button><button class="nav-btn" data-tab="agent" title="Агент"><span class="nav-ic" data-ic="sparkle"></span><span class="nav-l">Агент</span></button><button class="nav-btn" data-tab="contacts" title="Контакты"><span class="nav-ic" data-ic="phone"></span><span class="nav-l">Контакты</span></button><i class="rail-sep"></i><button class="nav-btn" data-tab="kanban" title="Канбан"><span class="nav-ic" data-ic="kanban"></span><span class="nav-l">Канбан</span></button><button class="nav-btn" data-tab="pack" title="Рюкзак"><span class="nav-ic" data-ic="bag"></span><span class="nav-l">Рюкзак</span></button><button class="nav-btn" data-tab="tasks" title="Задачи"><span class="nav-ic" data-ic="check"></span><span class="nav-l">Задачи</span></button><button class="nav-btn" data-tab="diary" title="Дневник"><span class="nav-ic" data-ic="book"></span><span class="nav-l">Дневник</span></button><button class="nav-btn" data-tab="notes" title="Заметки"><span class="nav-ic" data-ic="note"></span><span class="nav-l">Заметки</span></button><button class="nav-btn" data-tab="share" title="Обмен"><span class="nav-ic" data-ic="share"></span><span class="nav-l">Обмен</span></button></nav>
+      <div class="rail-foot"><button class="nav-btn" data-tab="profile" title="Профиль"><span class="nav-ic" data-ic="users"></span><span class="nav-l">Профиль</span></button><button class="nav-btn" data-tab="settings" title="Настройки"><span class="nav-ic" data-ic="sliders"></span><span class="nav-l">Настройки</span></button></div>
+    </aside>
+    <div class="shell">
+      <header class="app-header">
+        <div class="logo"><span data-brand-logo="28"></span><span data-brand-name>Орбита</span></div>
+        <h1 class="top-title" id="top-title">Орбита</h1>
+        <div class="header-actions">
+          <button class="icon-btn" id="btn-agent-quick" title="Агент (Ctrl+K)" aria-label="Агент"><span data-ic="sparkle" data-s="20"></span></button>
+          <button class="icon-btn sos" id="btn-sos" data-top="sos" title="Экстренная помощь" aria-label="SOS"><span data-ic="sos" data-s="20"></span></button>
+          <button class="icon-btn" id="btn-theme" title="Тема" aria-label="Тема"><span data-ic="moon" data-s="20"></span></button>
+          <button class="icon-btn" data-top="settings" title="Настройки" aria-label="Настройки"><span data-ic="sliders" data-s="20"></span></button>
         </div>
-        <span>Орбита</span>
-      </div>
-      <div class="header-actions">
-        <button class="icon-btn" id="btn-undo" title="Отменить" type="button">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 7"/></svg>
-          <span id="undo-badge" class="undo-badge" style="display:none"></span>
-        </button>
-        <button class="icon-btn" id="btn-theme" title="Тема">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-          </svg>
-        </button>
-        <button class="icon-btn" id="btn-agent-quick" title="Агент">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
-            <path d="M16 14c0-2.2-1.8-4-4-4s-4 1.8-4 4"/>
-            <path d="M8 18h8M9 21h6"/>
-          </svg>
-        </button>
-      </div>
-    </header>
-
-    <main class="main">
-      <!-- TODAY -->
-      <section id="tab-today" class="tab active">
-        <div class="section-header">
-          <h2 id="today-date">Сегодня</h2>
-          <p class="subtitle" id="today-weekday"></p>
-        </div>
-        <div id="dash-hero"></div>
-        <div id="dash-status"></div>
-        <div class="dash-section">
-          <h3>План дня · таймлайн</h3>
-          <div id="day-timeline" class="day-timeline"></div>
-        </div>
-        <div class="dash-section">
-          <div class="dash-section-head">
-            <h3>Нагрузка недели</h3>
-            <div class="dash-legend">
-              <span class="legend-item lesson"><i></i>Урок</span>
-              <span class="legend-item club"><i></i>Кружок</span>
-            </div>
-          </div>
-          <div id="week-charts"></div>
-          <div class="week-grid-wrap mt-12">
-            <div id="week-grid" class="week-grid"></div>
-          </div>
-        </div>
-        <div class="dash-section">
-          <h3>Уроки и перемены</h3>
-          <div id="today-lessons" class="cards-list"></div>
-        </div>
-        <div class="dash-section">
-          <h3>Домашка</h3>
-          <div id="today-hw"></div>
-        </div>
-      </section>
-
-      <!-- SCHEDULE -->
-      <section id="tab-schedule" class="tab">
+      </header>
+      <main class="app-main" id="main">
+        <section id="tab-today" class="tab active"><div id="dash"></div></section>
+        <section id="tab-schedule" class="tab">
         <div class="section-header">
           <h2>Расписание</h2>
           <p class="subtitle">Уроки и кружки по дням</p>
@@ -102,10 +52,7 @@
         </div>
         <div id="schedule-list"></div>
       </section>
-
-
-      <!-- KANBAN -->
-      <section id="tab-kanban" class="tab">
+        <section id="tab-kanban" class="tab">
         <div class="section-header">
           <h2>Канбан</h2>
           <p class="subtitle">Перетаскивай уроки и события при заменах</p>
@@ -117,9 +64,7 @@
         <div id="kanban-board" class="kanban-board"></div>
         <p class="hint mt-12">Нажми карточку — изменить. Стрелки ← → переносят на другой день (замена). + добавляет урок или событие.</p>
       </section>
-
-      <!-- PACK -->
-      <section id="tab-pack" class="tab">
+        <section id="tab-pack" class="tab">
         <div class="section-header">
           <h2>Что взять</h2>
           <p class="subtitle" id="pack-day-label">На сегодня</p>
@@ -128,60 +73,9 @@
         <div id="pack-list"></div>
         <button class="btn btn-secondary btn-block mt-12" id="pack-reset">Сбросить галочки</button>
       </section>
-
-      <!-- BUSES -->
-      <section id="tab-buses" class="tab">
-        <div class="section-header">
-          <h2>Автобусы</h2>
-          <p class="subtitle">Маршруты и когда выходить</p>
-        </div>
-        <div id="buses-list"></div>
-      </section>
-
-      <!-- AGENT -->
-      <section id="tab-agent" class="tab">
-        <div class="section-header">
-          <h2>Агент Орбита</h2>
-          <p class="subtitle">Помощник по расписанию</p>
-        </div>
-        <div class="agent-cats" id="agent-cats">
-          <button type="button" class="agent-cat active" data-cat="all">Все</button>
-          <button type="button" class="agent-cat" data-cat="info">Инфо</button>
-          <button type="button" class="agent-cat" data-cat="add">Добавить</button>
-          <button type="button" class="agent-cat" data-cat="delete">Удалить</button>
-          <button type="button" class="agent-cat" data-cat="move">Перенос</button>
-        </div>
-        <div class="agent-suggestions" id="agent-suggestions">
-          <button class="chip" data-cat="info" data-cmd="помощь">Помощь</button>
-          <button class="chip" data-cat="info" data-cmd="свободное время">Свободное время</button>
-          <button class="chip" data-cat="info" data-cmd="нагрузка недели">Нагрузка</button>
-          <button class="chip" data-cat="info" data-cmd="что взять завтра">Что взять</button>
-          <button class="chip" data-cat="info" data-cmd="следующий урок">Сейчас / далее</button>
-          <button class="chip" data-cat="info" data-cmd="статистика">Статистика</button>
-          <button class="chip" data-cat="info" data-cmd="список предметов">Предметы</button>
-          <button class="chip" data-cat="add" data-cmd="добавь урок Математика пн 8:30">+ Урок</button>
-          <button class="chip" data-cat="add" data-cmd="добавь кружок Робототехника ср 15:00-16:30">+ Кружок</button>
-          <button class="chip" data-cat="add" data-cmd="заполни день сегодня">Типовой день</button>
-          <button class="chip" data-cat="delete" data-cmd="удали все уроки в понедельник">Удалить день</button>
-          <button class="chip" data-cat="delete" data-cmd="очисти расписание">Очистить расписание</button>
-          <button class="chip" data-cat="delete" data-cmd="удали всю домашку">Очистить ДЗ</button>
-          <button class="chip" data-cat="move" data-cmd="перенеси математику с пн на вт">Перенос урока</button>
-        </div>
-        <div class="agent-drop" id="agent-drop">
-          <input type="file" id="agent-file-input" accept=".json,.csv,.xlsx,.xls,.txt,application/json,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden />
-          <button type="button" class="btn btn-secondary btn-block" id="agent-file-btn">📎 Файл или перетащи сюда JSON / Excel / CSV</button>
-          <p class="hint" style="margin:6px 0 0;text-align:center">Агент разложит данные по урокам, автобусам, ДЗ…</p>
-        </div>
-        <div id="agent-live-chips" class="agent-live-chips hidden" aria-live="polite"></div>
-        <div class="agent-chat" id="agent-chat"></div>
-        <div class="agent-input-row">
-          <input type="text" class="input" id="agent-input" placeholder="Команда или вопрос…" autocomplete="off" />
-          <button class="btn btn-primary" id="agent-send">→</button>
-        </div>
-      </section>
-
-      <!-- TASKS -->
-      <section id="tab-tasks" class="tab">
+        <section id="tab-buses" class="tab"><div class="section-header"><h2>Автобусы</h2><p class=subtitle>Расписание рейсов и когда выходить</p></div><div id="buses-root"></div></section>
+        <section id="tab-agent" class="tab"><div id="agent-root"></div></section>
+        <section id="tab-tasks" class="tab">
         <div class="section-header">
           <h2>Задачи</h2>
           <p class="subtitle">Домашка и цели</p>
@@ -192,9 +86,7 @@
         </div>
         <div id="tasks-list"></div>
       </section>
-
-      <!-- DIARY -->
-      <section id="tab-diary" class="tab">
+        <section id="tab-diary" class="tab">
         <div class="section-header">
           <h2>Дневник</h2>
           <p class="subtitle">Итог дня</p>
@@ -246,18 +138,18 @@
           <div id="diary-history"></div>
         </div>
       </section>
-
-      <!-- NOTES -->
-      <section id="tab-notes" class="tab">
+        <section id="tab-notes" class="tab">
         <div class="section-header">
           <h2>Заметки</h2>
           <p class="subtitle">Текст и голосовые</p>
         </div>
         <div id="notes-list"></div>
       </section>
-
-      <!-- PROFILE -->
-      <section id="tab-profile" class="tab">
+        <section id="tab-contacts" class="tab"><div class="section-header"><h2>Контакты</h2><p class=subtitle>Звонок и сообщение в одно касание</p></div><div id="contacts-root"></div></section>
+        <section id="tab-share" class="tab"><div class="section-header"><h2>Обмен данными</h2><p class=subtitle>QR · файл · Bluetooth · код · ссылка</p></div><div id="share-root"></div></section>
+        <section id="tab-settings" class="tab"><div class="section-header"><h2>Настройки</h2><p class=subtitle>Бренд, главный экран, агент, данные</p></div><div id="settings-root"></div></section>
+        <section id="tab-more" class="tab"><div class="section-header"><h2>Ещё</h2><p class=subtitle>Все разделы</p></div><div id="more-root"></div></section>
+        <section id="tab-profile" class="tab">
         <div class="section-header">
           <h2>Профиль</h2>
           <p class="subtitle">Данные, QR, настройки</p>
@@ -270,86 +162,42 @@
           <button class="ptab" data-ptab="qr">QR-обмен</button>
           <button class="ptab" data-ptab="json">JSON</button>
           <button class="ptab" data-ptab="settings">Настройки</button>
-          <button class="ptab ptab-danger" data-ptab="danger">Очистка</button>
           <button class="ptab" data-ptab="about">О приложении</button>
         </div>
         <div id="profile-content"></div>
       </section>
-    </main>
-
-    <button class="fab hidden" id="fab" title="Добавить">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-      </svg>
-    </button>
-
-    <nav class="main-nav" id="main-nav">
-      <button class="nav-btn active" data-tab="today" title="Сегодня">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-        <span>Сегодня</span>
-      </button>
-      <button class="nav-btn" data-tab="schedule" title="Расписание">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        <span>Уроки</span>
-      </button>
-      <button class="nav-btn" data-tab="kanban" title="Канбан">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="10" rx="1"/><rect x="14" y="15" width="7" height="6" rx="1"/></svg>
-        <span>Канбан</span>
-      </button>
-      <button class="nav-btn" data-tab="pack" title="Рюкзак">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-        <span>Рюкзак</span>
-      </button>
-      <button class="nav-btn" data-tab="buses" title="Автобусы">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16v10H4z"/><path d="M6 16v2M18 16v2M8 6V4h8v2"/></svg>
-        <span>Автобус</span>
-      </button>
-      <button class="nav-btn" data-tab="agent" title="Агент">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M16 14c0-2.2-1.8-4-4-4s-4 1.8-4 4"/><path d="M8 18h8"/></svg>
-        <span>Агент</span>
-      </button>
-      <button class="nav-btn" data-tab="tasks" title="Задачи">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        <span>Задачи</span>
-      </button>
-      <button class="nav-btn" data-tab="diary" title="Дневник">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-        <span>Дневник</span>
-      </button>
-      <button class="nav-btn" data-tab="notes" title="Заметки">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span>Заметки</span>
-      </button>
-      <button class="nav-btn" data-tab="profile" title="Профиль">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>Ещё</span>
-      </button>
-    </nav>
+      </main>
+    </div>
+    <button class="fab hidden" id="fab" title="Добавить" aria-label="Добавить"><span data-ic="plus" data-s="26"></span></button>
+    <nav class="main-nav" id="main-nav" aria-label="Основная навигация"><button class="nav-btn active" data-tab="today" title="Сегодня"><span class="nav-ic" data-ic="home"></span><span class="nav-l">Сегодня</span></button><button class="nav-btn" data-tab="schedule" title="Уроки"><span class="nav-ic" data-ic="calendar"></span><span class="nav-l">Уроки</span></button><button class="nav-btn" data-tab="buses" title="Автобус"><span class="nav-ic" data-ic="bus"></span><span class="nav-l">Автобус</span></button><button class="nav-btn" data-tab="agent" title="Агент"><span class="nav-ic" data-ic="sparkle"></span><span class="nav-l">Агент</span></button><button class="nav-btn" data-tab="more" title="Ещё"><span class="nav-ic" data-ic="more"></span><span class="nav-l">Ещё</span></button></nav>
   </div>
 
   <div class="modal-overlay hidden" id="modal-overlay">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 id="modal-title">Заголовок</h3>
-        <button class="modal-close" id="modal-close">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-header"><h3 id="modal-title">Заголовок</h3>
+        <button class="modal-close" id="modal-close" aria-label="Закрыть"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
       <div class="modal-body" id="modal-body"></div>
       <div class="modal-footer" id="modal-footer"></div>
     </div>
   </div>
-
   <div class="toast" id="toast"></div>
+  <div id="legacy-stubs" hidden><div id="agent-cats"></div><div id="agent-suggestions"></div><div id="agent-chat"></div><div id="dash-hero"></div><div id="dash-status"></div><div id="day-timeline"></div><div id="week-charts"></div><div id="week-grid"></div><div id="today-lessons"></div><div id="today-hw"></div><div id="today-date"></div><div id="today-weekday"></div><div id="buses-list"></div><input id="agent-input"><button id="agent-send"></button></div>
 
   <script src="js/qrcode.js"></script>
   <script src="js/xlsx.mini.min.js"></script>
   <script src="js/jsQR.js"></script>
   <script src="js/app.js"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
-    }
-  </script>
+  <script src="js/orbit/engine.js"></script>
+  <script src="js/orbit/kit.js"></script>
+  <script src="js/orbit/brand.js"></script>
+  <script src="js/orbit/habits.js"></script>
+  <script src="js/orbit/dash.js"></script>
+  <script src="js/orbit/lists.js"></script>
+  <script src="js/orbit/actions.js"></script>
+  <script src="js/orbit/llm.js"></script>
+  <script src="js/orbit/assistant.js"></script>
+  <script src="js/orbit/share.js"></script>
+  <script src="js/orbit/settings.js"></script>
+  <script src="js/orbit/boot.js"></script>
 </body>
 </html>
