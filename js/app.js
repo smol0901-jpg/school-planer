@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'orbit-planner-v3';
   const BACKUP_KEY = 'orbit-planner-backup-v3';
-  const APP_VERSION = '4.3.5';
+  const APP_VERSION = '4.3.6';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
   const SUBJECTS = [
@@ -224,9 +224,13 @@
     if (tab !== 'profile' || profileTab !== 'qr') stopQrScan();
     render();
   }
-  document.getElementById('main-nav').addEventListener('click', e => {
-    const btn = e.target.closest('.nav-btn');
-    if (btn) switchTab(btn.dataset.tab);
+  // нижняя панель (телефон) и боковое меню (ПК/планшет) — один обработчик
+  ['main-nav', 'rail'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', e => {
+      const btn = e.target.closest('.nav-btn');
+      if (btn && btn.dataset.tab) switchTab(btn.dataset.tab);
+    });
   });
   document.getElementById('btn-theme').addEventListener('click', toggleTheme);
   document.getElementById('btn-agent-quick').addEventListener('click', () => switchTab('agent'));
