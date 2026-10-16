@@ -80,14 +80,14 @@
       { t: 'toggle', k: 'llmEnabled', label: 'Запросы к нейросети по API' },
       { t: 'llmwizard' },
       { t: 'llmprov' },
-      { t: 'text', k: 'llmEndpoint', label: 'API Endpoint', hint: 'Для custom / правка URL. Grok/DeepSeek/OpenAI подставляются пресетом' },
-      { t: 'pass', k: 'llmKey', label: 'API Key (Grok / DeepSeek / Claude / OpenAI)' },
+      { t: 'text', k: 'llmEndpoint', label: 'API Endpoint', hint: 'Полный URL вида …/chat/completions', prov: ['custom'] },
+      { t: 'pass', k: 'llmKey', label: 'API Key', prov: ['grok', 'deepseek', 'claude', 'openai', 'custom'] },
       { t: 'text', k: 'llmModel', label: 'Модель', hint: 'GigaChat, grok-2-latest, deepseek-chat, claude-…' },
-      { t: 'text', k: 'llmClientId', label: 'GigaChat Client ID' },
-      { t: 'pass', k: 'llmClientSecret', label: 'GigaChat Client Secret' },
-      { t: 'pass', k: 'llmAuthKey', label: 'GigaChat Authorization Key (base64, опционально)' },
-      { t: 'text', k: 'llmScope', label: 'GigaChat Scope', hint: 'GIGACHAT_API_PERS' },
-      { t: 'text', k: 'llmProxy', label: 'Proxy URL (CORS)', hint: 'Оставьте ПУСТО. Только если есть свой сервер: https://your-proxy.example.com  (НЕ api.giga.chat)' },
+      { t: 'text', k: 'llmClientId', label: 'GigaChat Client ID', prov: ['giga'] },
+      { t: 'pass', k: 'llmClientSecret', label: 'GigaChat Client Secret', prov: ['giga'] },
+      { t: 'pass', k: 'llmAuthKey', label: 'GigaChat Authorization Key (base64, опционально)', prov: ['giga'] },
+      { t: 'text', k: 'llmScope', label: 'GigaChat Scope', hint: 'GIGACHAT_API_PERS', prov: ['giga'] },
+      { t: 'text', k: 'llmProxy', label: 'Proxy URL (CORS)', hint: 'Оставьте ПУСТО. Только если есть свой сервер: https://your-proxy.example.com  (НЕ api.giga.chat)', prov: ['giga', 'custom'] },
       { t: 'agentmem' }] },
     { id: 'sos', title: 'Контакты и SOS', icon: 'sos', items: [
       { t: 'toggle', k: 'sosEnabled', label: 'Показывать кнопку SOS' }, { t: 'text', k: 'sosNumber', label: 'Номер экстренной службы', hint: '112 работает по всей России и с телефона без SIM' }] },
@@ -125,12 +125,11 @@
           <div class="o-wiz-steps" id="llm-wiz-steps">
             <div class="o-wiz-s"><span>1</span> Включите API сверху</div>
             <div class="o-wiz-s"><span>2</span> Выберите провайдер (сейчас: <b>${esc(pname)}</b>)</div>
-            <div class="o-wiz-s"><span>3</span> Заполните ключи ниже (для GigaChat — Client ID и Secret; Proxy оставьте пустым)</div>
+            <div class="o-wiz-s"><span>3</span> ${prov === 'giga' ? 'Заполните Client ID и Secret ниже (Proxy оставьте пустым)' : prov === 'custom' ? 'Укажите Endpoint и API Key ниже' : 'Вставьте API Key ниже'}</div>
             <div class="o-wiz-s"><span>4</span> Нажмите «Проверить подключение»</div>
           </div>
           <div class="o-wiz-actions">
             <button type="button" class="o-btn" data-sact="llm-test">${ic('sparkle',16)} Проверить подключение</button>
-            <button type="button" class="o-btn ghost" data-sact="llm-wiz-giga">Быстро: GigaChat</button>
           </div>
           <div id="llm-test-result" class="o-llm-test-result hidden" aria-live="polite"></div>
         </div>`;
@@ -152,9 +151,15 @@
     return '';
   };
 
+  function llmTune(i, st) {
+    if (i.k !== 'llmKey' && i.k !== 'llmModel') return i;
+    const prov = st.llmProvider || 'custom', P = (O.llmProviders || {})[prov] || {};
+    if (i.k === 'llmKey') return Object.assign({}, i, { label: 'API Key' + (P.name ? ' · ' + P.name : '') });
+    return Object.assign({}, i, { hint: P.models && P.models.length ? 'Например: ' + P.models.join(', ') : 'Название модели у вашего провайдера' });
+  }
   O.renderSettings = function () {
     const root = $('settings-root'); if (!root) return; const st = S().settings;
-    root.innerHTML = SECTIONS.map(sec => `<details class="o-sec" data-sec="${sec.id}"${open.has(sec.id) ? ' open' : ''}><summary>${ic(sec.icon, 20)}<b>${sec.title}</b>${ic('chevD', 16)}</summary><div class="o-sec-b">${sec.items.map(i => item(i, st)).join('')}</div></details>`).join('');
+    root.innerHTML = SECTIONS.map(sec => `<details class="o-sec" data-sec="${sec.id}"${open.has(sec.id) ? ' open' : ''}><summary>${ic(sec.icon, 20)}<b>${sec.title}</b>${ic('chevD', 16)}</summary><div class="o-sec-b">${sec.items.filter(i => !i.prov || i.prov.includes(st.llmProvider || 'custom')).map(i => item(llmTune(i, st), st)).join('')}</div></details>`).join('');
     O.look(st); document.querySelectorAll('#settings-root [data-brand-logo]').forEach(e => e.innerHTML = O.logo(O.brand().id, +e.dataset.brandLogo || 28));
   };
 

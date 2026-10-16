@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'orbit-planner-v3';
   const BACKUP_KEY = 'orbit-planner-backup-v3';
-  const APP_VERSION = '4.3.3';
+  const APP_VERSION = '4.3.4';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
   const SUBJECTS = [
@@ -70,10 +70,10 @@
     packChecks: {},
     settings: {
       llmEnabled: false,
-      llmProvider: 'giga',
-      llmEndpoint: 'https://api.giga.chat/v1/chat/completions',
+      llmProvider: 'openai',
+      llmEndpoint: 'https://api.openai.com/v1/chat/completions',
       llmKey: '',
-      llmModel: 'GigaChat',
+      llmModel: 'gpt-4o-mini',
       llmClientId: '',
       llmClientSecret: '',
       llmAuthKey: '',

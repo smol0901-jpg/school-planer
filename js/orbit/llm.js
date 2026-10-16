@@ -74,10 +74,6 @@
     const clientId = (s.llmClientId || '').trim();
     const clientSecret = (s.llmClientSecret || '').trim();
     const authKey = (s.llmAuthKey || '').trim();
-    // если заполнены поля GigaChat — работаем как giga, даже если в UI осталось «Другая»
-    if ((clientId && clientSecret) || authKey) {
-      if (provider === 'custom' || !provider) provider = 'giga';
-    }
     return {
       provider,
       enabled: !!s.llmEnabled,
@@ -96,6 +92,15 @@
   function applyProviderDefaults(id) {
     const p = PROVIDERS[id] || PROVIDERS.custom;
     const s = S().settings;
+    const prev = s.llmProvider || 'custom';
+    if (prev !== p.id) {
+      // у каждого провайдера свой ключ (чтобы ключ OpenAI не уходил в DeepSeek и т. п.)
+      s.llmKeys = s.llmKeys || {};
+      s.llmKeys[prev] = s.llmKey || '';
+      s.llmKey = s.llmKeys[p.id] || '';
+      if (prev === 'custom') s.llmEndpointCustom = s.llmEndpoint || '';
+      if (p.id === 'custom') s.llmEndpoint = s.llmEndpointCustom || '';
+    }
     s.llmProvider = p.id;
     if (p.chatUrl) s.llmEndpoint = p.chatUrl;
     if (p.defaultModel) s.llmModel = p.defaultModel;
@@ -202,7 +207,8 @@ ${userExtra || ''}`;
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': key,
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
         model,
@@ -292,7 +298,7 @@ ${userExtra || ''}`;
     if (!c.enabled) tips.push('Включите «Запросы к нейросети по API».');
     if (c.proxyRaw && !c.proxy)
       tips.push('Proxy URL должен начинаться с https://. Оставьте пустым, если прокси нет. Не пишите api.giga.chat.');
-    if (c.provider === 'giga' || c.clientId || c.authKey) {
+    if (c.provider === 'giga') {
       if (!c.authKey && !(c.clientId && c.clientSecret))
         tips.push('Для GigaChat нужны Client ID и Client Secret (или Authorization Key).');
       if (!c.proxy)
