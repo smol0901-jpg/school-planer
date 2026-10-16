@@ -274,6 +274,17 @@
   }, 'memory');
   on(/^(забудь все|забудь всё|очисти память)/, () => R('Стереть память агента (привычки, заметки, связи контактов)?', { buttons: [btn('Да, забыть', 'ag:forget'), btn('Нет', 'ag:no:x')] }), 'forget');
   on(/^(отмени|отмена|верни назад)$/, () => { const u = undoStack.pop(); if (!u) return R('Нечего отменять.'); u(); C().save(); C().render(); return R('Отменено.'); }, 'undo');
+  on(/^(алло|алё|але|ало|ау|эй|прив|привет|приветик|здравствуй\w*|здорово|хай|hi|hello|ку|добрый (день|вечер)|доброе утро|доброй ночи)( (алло|алё|але|ало|орби|орбита))*$/, () => {
+    const h = new Date().getHours();
+    const hi = h < 5 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер';
+    return R(hi + '! Я на связи. Скажи «я освободился» — подберу автобус, или «что дальше» — покажу день.', { buttons: sug() });
+  }, 'hello');
+  on(/^(как дела|как ты|спасибо|благодарю|пока|до свидания|ок|окей|ладно|хорошо)$/, (t, n) => {
+    if (/^(пока|до свидания)/.test(n)) return R('Пока! Если что — я тут.');
+    if (/^(спасибо|благодарю)/.test(n)) return R('Пожалуйста!');
+    if (/^как/.test(n)) return R('Всё хорошо, работаю. Чем помочь?', { buttons: sug() });
+    return R('Хорошо.', { buttons: sug() });
+  }, 'smalltalk');
   on(/^(помощь|помоги мне|что (ты )?(умеешь|можешь)|команды|привет|здравствуй\w*|hi|хай)$/, () => {
     const skills = (O.actions && O.actions.SKILLS) || [];
     const byCat = {};
@@ -573,17 +584,22 @@
   }
 
   /* ───── LLM API (OpenAI-совместимый, любая нейросеть) ───── */
+  let llmDownUntil = 0;           // после сбоя нейросеть не дёргаем 5 минут
+  A.llmLastError = '';
   async function callLlm(userText) {
     if (!O.llmReady || !O.llmReady()) return null;
-    const result = await O.llmChat(userText);
+    if (Date.now() < llmDownUntil) return null;
+    let result;
+    try { result = await O.llmChat(userText); } catch (e) { result = { ok: false, error: String((e && e.message) || e) }; }
     if (!result) return null;
     if (!result.ok) {
-      const tips = (O.llmDiagnose && O.llmDiagnose()) || [];
-      const extra = tips.length ? '\n\n' + tips.map((t, i) => (i + 1) + ') ' + t).join('\n') : '';
-      return R('Нейросеть: ' + (result.error || 'ошибка') + extra, {
-        buttons: [btn('Настройки агента', 'tab:settings'), ...sug().slice(0, 2)]
-      });
+      // Нейросеть — запасной вариант: ошибку не показываем в чате, агент отвечает сам.
+      A.llmLastError = result.error || 'ошибка';
+      llmDownUntil = Date.now() + 5 * 60 * 1000;
+      try { console.warn('[Орбита] нейросеть недоступна:', A.llmLastError); } catch (e) {}
+      return null;
     }
+    llmDownUntil = 0; A.llmLastError = '';
     let content = String(result.text || '').trim();
     let parsed = null;
     try {
@@ -642,7 +658,7 @@
       if (O.llmReady && O.llmReady()) {
         A.render(true); // show typing via busy
         const llmR = await callLlm(replies[0]._raw || text);
-        replies = [llmR || R('Не понял. Выберите:', { buttons: sug() })];
+        replies = [llmR || R('Не совсем понял «' + text + '». Я умею автобусы, звонки, ДЗ, напоминания и уроки — выбери:', { buttons: sug() })];
       } else {
         const aiPrompt = 'Ты помогаешь школьному планеру «Орбита». Пользователь написал: «' + text + '».\nПерефразируй в одну чёткую команду на русском.\nОтветь ТОЛЬКО текстом команды.';
         const showPrompt = s.agentAiPrompt !== false;
@@ -797,7 +813,7 @@
     // клики по data-ag обрабатывает root (A.render)
     try { voice(); } catch (err) {}
     try { O.look && O.look(S().settings); } catch (err) {}
-    try { const st = $('ag-status'); if (st) { const s = S().settings || {}; st.textContent = (O.llmReady && O.llmReady()) ? ('Онлайн: ' + (s.llmProvider || 'llm') + ' · привычки') : 'Офлайн · помнит привычки'; } } catch (e) {}
+    try { const st = $('ag-status'); if (st) { const s = S().settings || {}; st.textContent = 'Помощник · помнит привычки' + ((O.llmReady && O.llmReady()) ? ' · ИИ в запасе' : ''); } } catch (e) {}
   }
 
   A.render = function (scroll) {

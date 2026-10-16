@@ -37,7 +37,7 @@ html[data-glass="on"] body::before{content:"";position:fixed;inset:0;z-index:-1;
 .app{display:grid;grid-template-columns:1fr;max-width:none;margin:0;min-height:100dvh;position:relative}
 .shell{min-width:0;display:flex;flex-direction:column}
 .rail{display:none}
-.app-header{position:sticky;top:0;z-index:50;height:calc(var(--header-h) + env(safe-area-inset-top,0px));padding:env(safe-area-inset-top,0px) 14px 0;display:flex;align-items:center;gap:10px;background:color-mix(in srgb,var(--bg) 72%,transparent);backdrop-filter:var(--glass);-webkit-backdrop-filter:var(--glass);border-bottom:1px solid var(--line)}
+header.app-header,.app-header{position:sticky;top:0;z-index:50;box-sizing:border-box;height:calc(var(--header-h) + env(safe-area-inset-top,0px));padding:env(safe-area-inset-top,0px) 14px 0;display:flex;align-items:center;gap:10px;background:color-mix(in srgb,var(--bg) 72%,transparent);backdrop-filter:var(--glass);-webkit-backdrop-filter:var(--glass);border-bottom:1px solid var(--line)}
 .app-header .logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:1.12rem;letter-spacing:-.02em}
 .top-title{display:none;font-size:1.05rem;font-weight:700;letter-spacing:-.01em}
 .header-actions{margin-left:auto;display:flex;gap:4px}
@@ -243,8 +243,8 @@ html[data-glass="on"] .o-card{backdrop-filter:var(--glass);-webkit-backdrop-filt
 .o-form{display:grid;gap:10px}
 
 /* ─── агент (чат) ─── */
-#agent-root{height:calc(100dvh - var(--header-h) - var(--nav-h) - var(--safe-bottom) - 40px);min-height:420px;max-width:860px;margin:0 auto}
-@media (min-width:720px){#agent-root{height:calc(100dvh - var(--header-h) - 60px)}}
+#agent-root{height:calc(100dvh - var(--header-h) - env(safe-area-inset-top,0px) - var(--nav-h) - var(--safe-bottom) - 40px);min-height:420px;max-width:860px;margin:0 auto}
+@media (min-width:720px){#agent-root{height:calc(100dvh - var(--header-h) - env(safe-area-inset-top,0px) - 60px)}}
 .o-chat{height:100%;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:calc(var(--r) + 4px);background:color-mix(in srgb,var(--bg-card) 80%,transparent);overflow:hidden}
 html[data-glass="on"] .o-chat{backdrop-filter:var(--glass)}
 .o-chat-h{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line)}.o-chat-h div{flex:1;display:grid}.o-chat-h b{font-size:1rem}.o-chat-h small{color:var(--text-muted);font-size:.74rem}

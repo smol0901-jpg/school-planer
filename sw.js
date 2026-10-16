@@ -2,7 +2,7 @@
    • офлайн: все файлы приложения (включая QR-библиотеки) кэшируются при установке
    • обновления: новая версия ставится в фоне, пользователь подтверждает «Обновить» (тост в приложении)
    • «Поделиться в Орбиту»: принимает файл/текст из системного меню (share_target) и передаёт в приложение */
-const V = 'orbit-v4.3.2';
+const V = 'orbit-v4.3.3';
 const CORE = ['./', './index.html', './manifest.json', './version.json', './browserconfig.xml',
   './css/styles.css', './css/orbit4.css',
   './js/qrcode.js', './js/jsQR.js', './js/xlsx.mini.min.js', './js/app.js',
