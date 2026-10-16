@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'orbit-planner-v3';
   const BACKUP_KEY = 'orbit-planner-backup-v3';
-  const APP_VERSION = '4.3.4';
+  const APP_VERSION = '4.3.5';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
   const SUBJECTS = [
@@ -196,7 +196,7 @@
     if (window.Orbit && Orbit.look) Orbit.look(state.settings);
   }
   function toggleTheme() {
-    state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark';
+    state.settings.theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
     applyTheme(); save();
   }
 

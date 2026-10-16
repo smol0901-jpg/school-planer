@@ -55,9 +55,10 @@
   const seg = (k, opts) => ({ t: 'seg', k, opts });
   const SECTIONS = [
     { id: 'look', title: 'Бренд и стиль', icon: 'palette', items: [
+      { t: 'note', text: '<b>Бренд</b> — название, логотип, цвета, форма и имя агента. <b>Тема</b> (светлая/тёмная) работает в любом бренде.' },
       { t: 'brand' },
-      { t: 'seg', k: 'theme', label: 'Тема', opts: [['dark', 'Тёмная'], ['light', 'Светлая'], ['amoled', 'AMOLED'], ['auto', 'Как в системе']] },
-      { t: 'accent', label: 'Цвет акцента', hint: 'Перекрашивает выбранный бренд' },
+      { t: 'seg', k: 'theme', label: 'Тема', hint: 'Тёмная — ночной вид · Светлая — дневной · AMOLED — чисто чёрный фон (экономит батарею на OLED-экранах) · Как в системе — по настройке телефона', opts: [['dark', 'Тёмная'], ['light', 'Светлая'], ['amoled', 'AMOLED'], ['auto', 'Как в системе']] },
+      { t: 'accent', label: 'Цвет акцента', hint: 'Меняет только главный цвет кнопок и подсветки; остальное остаётся как у бренда. Вернуть цвет бренда — кнопка «Как у бренда»' },
       { t: 'seg', k: 'font', label: 'Шрифт', opts: [['system', 'Как у бренда'], ['sans', 'Обычный'], ['rounded', 'Округлый'], ['serif', 'С засечками'], ['mono', 'Моно'], ['readable', 'Читаемый']] },
       { t: 'range', k: 'textScale', label: 'Размер текста', min: 85, max: 140, step: 5, unit: '%' },
       { t: 'range', k: 'radius', label: 'Скругление углов', min: 4, max: 28, step: 1, unit: 'px', hint: '14 — как задумал бренд' },
@@ -107,7 +108,7 @@
     const v = st[it.k];
     switch (it.t) {
       case 'brand': return `<div class="o-brands">${Object.values(O.brands).map(b => `<button class="o-brand${(st.brand || 'orbit') === b.id ? ' on' : ''}" data-sact="brand:${b.id}"><span class="o-brand-logo">${O.logo(b.id, 40)}</span><b>${esc(b.name)}</b><small>${esc(b.style)}</small><em>Агент: ${esc(b.agent)}</em></button>`).join('')}</div>`;
-      case 'seg': return `<div class="o-set"><label>${it.label}</label><div class="o-segs">${it.opts.map(([x, l]) => `<button class="o-chip${(v === undefined ? it.opts[0][0] : v) === x ? ' on' : ''}" data-sk="${it.k}" data-sv="${x}">${l}</button>`).join('')}</div></div>`;
+      case 'seg': return `<div class="o-set"><label>${it.label}</label>${it.hint ? `<small>${it.hint}</small>` : ''}<div class="o-segs">${it.opts.map(([x, l]) => `<button class="o-chip${(v === undefined ? it.opts[0][0] : v) === x ? ' on' : ''}" data-sk="${it.k}" data-sv="${x}">${l}</button>`).join('')}</div></div>`;
       case 'accent': return `<div class="o-set"><label>${it.label}</label>${it.hint ? `<small>${it.hint}</small>` : ''}<div class="o-sw-row">${O.ACCENTS.map(([n, c]) => `<button class="o-dot${(st.accentCustom || '').toLowerCase() === c ? ' on' : ''}" style="--c:${c}" data-sk="accentCustom" data-sv="${c}" aria-label="${n}"></button>`).join('')}<input type="color" class="o-colorin" data-sk="accentCustom" value="${/^#[0-9a-f]{6}$/i.test(st.accentCustom || '') ? st.accentCustom : '#8b5cf6'}" aria-label="Свой цвет"><button class="o-chip" data-sk="accentCustom" data-sv="">Как у бренда</button></div></div>`;
       case 'range': return `<div class="o-set"><label>${it.label} <b>${v ?? ''}${it.unit || ''}</b></label>${it.hint ? `<small>${it.hint}</small>` : ''}<input type="range" data-sk="${it.k}" min="${it.min}" max="${it.max}" step="${it.step || 1}" value="${v ?? it.min}"></div>`;
       case 'toggle': { const on = it.on !== undefined ? v === it.on : v !== false && !!(v === undefined ? true : v); return `<label class="o-sw"><input type="checkbox" data-sk="${it.k}" data-on="${it.on ?? ''}" data-off="${it.off ?? ''}" ${it.perm ? 'data-perm="1"' : ''}${on ? ' checked' : ''}><i></i><span>${it.label}</span></label>`; }

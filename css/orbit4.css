@@ -19,7 +19,8 @@ html[data-font="serif"]{--font:'Georgia','Iowan Old Style','Cambria','Times New 
 html[data-font="mono"]{--font:ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace}
 html[data-font="readable"]{--font:'Atkinson Hyperlegible','Verdana','Segoe UI',sans-serif}
 html[data-font="readable"] body{letter-spacing:.012em;line-height:1.6}
-html[data-skin="amoled"]{--bg:#000;--bg-elevated:#07070a;--bg-card:#0c0c10;--bg-card-hover:#14141a}
+html[data-brand][data-skin="amoled"][data-theme="dark"]{--bg:#000;--bg-elevated:#06060a;--bg-card:#0b0b0f;--bg-card-hover:#14141a}
+html[data-skin="amoled"][data-glass="on"] body::before{opacity:.55}
 html[data-contrast="high"]{--border:color-mix(in srgb,var(--text) 38%,transparent);--border-strong:var(--text);--text-muted:color-mix(in srgb,var(--text) 82%,var(--bg))}
 html[data-theme="light"]{--border:rgba(15,21,48,.09);--border-strong:rgba(15,21,48,.18)}
 html[data-motion="off"] *,html[data-motion="off"] *::before,html[data-motion="off"] *::after{animation:none!important;transition:none!important}
