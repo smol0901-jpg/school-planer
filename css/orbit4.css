@@ -358,3 +358,37 @@ button.o-sos-big{width:100%;text-align:left;cursor:pointer;font:inherit;color:in
 .o-test-step span{color:var(--text-muted);word-break:break-word}
 .o-test-step.ok b{color:#22c55e}
 .o-test-step.bad b{color:#f43f5e}
+
+/* ── Сценарии (редактор блок-схем) ── */
+.sc-wrap{padding:12px;display:flex;flex-direction:column;gap:8px;overflow:auto}
+.sc-hint{color:var(--text-muted);font-size:.85rem;margin:0}
+.sc-item,.sc-b,.sc-start,.sc-end,.sc-top{border:1px solid var(--border);background:var(--bg-card);border-radius:14px;padding:10px 12px}
+.sc-item{display:flex;justify-content:space-between;align-items:center;gap:8px}.sc-item small{display:block;color:var(--text-muted)}
+.sc-wrap button{font:inherit;border:1px solid var(--border);background:var(--bg-elevated);color:inherit;border-radius:10px;padding:8px 12px;min-height:40px;cursor:pointer}
+.sc-wrap button.pri{background:var(--gradient-accent,var(--accent));color:var(--on-accent,#fff);border:0}
+.sc-in{width:100%;font:inherit;color:inherit;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:9px 10px;min-height:40px;box-sizing:border-box}
+.sc-name{font-weight:700}.sc-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.sc-row .sc-in{flex:1;min-width:90px}
+.sc-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.sc-h span{display:flex;gap:4px}.sc-h button{padding:2px 9px;min-height:32px}
+.sc-arr{text-align:center;color:var(--text-muted);line-height:1}.sc-start,.sc-end{text-align:center;font-weight:700;border-radius:999px}
+.sc-flow{display:flex;flex-direction:column;gap:6px}.sc-add{border-style:dashed!important}
+.sc-b.sc-if{border-color:var(--accent)}.sc-branches{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.sc-br{border-radius:12px;padding:6px;border:1px dashed var(--border)}.sc-br>i{font-style:normal;font-weight:700;font-size:.8rem}
+.sc-br.yes>i{color:var(--ok)}.sc-br.no>i{color:var(--bad)}@media(max-width:520px){.sc-branches{grid-template-columns:1fr}}
+.sc-pal{display:grid;gap:6px}.sc-pal button{text-align:left}.sc-pal small{display:block;color:var(--text-muted)}
+.sc-top{display:flex;gap:6px;flex-wrap:wrap}.sc-trig{display:flex;gap:6px;flex-wrap:wrap}.sc-days{display:flex;gap:4px;flex-wrap:wrap}.sc-days .on{background:var(--accent)!important;color:var(--on-accent,#fff)}
+.sc-tpl{margin:0 6px 6px 0}
+
+/* ─── 4.4.2: слияние веток «Если» ─── */
+.sc-merge{display:flex;align-items:center;gap:8px;margin:2px 0;color:var(--text-muted);font-size:.78rem}
+.sc-merge::before,.sc-merge::after{content:"";flex:1;height:1px;background:var(--border,var(--line))}
+.sc-merge span{white-space:nowrap}
+/* ─── 4.4.2: подсказки агента на ПК — видимая полоса, колесо, перетаскивание ─── */
+.o-chips-row,.o-live-chips{overscroll-behavior-x:contain}
+@media (hover:hover) and (pointer:fine){
+  .o-chips-row,.o-live-chips{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--text) 30%,transparent) transparent;cursor:grab;padding-bottom:10px}
+  .o-chips-row::-webkit-scrollbar,.o-live-chips::-webkit-scrollbar{display:block;height:6px}
+  .o-chips-row::-webkit-scrollbar-thumb,.o-live-chips::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--text) 30%,transparent);border-radius:99px}
+  .o-chips-row::-webkit-scrollbar-track,.o-live-chips::-webkit-scrollbar-track{background:transparent}
+  .o-chips-row.dragging,.o-live-chips.dragging,.o-agent-tabs.dragging{cursor:grabbing;user-select:none}
+  .o-chips-row.dragging *,.o-live-chips.dragging *{pointer-events:none}
+}

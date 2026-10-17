@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'orbit-planner-v3';
   const BACKUP_KEY = 'orbit-planner-backup-v3';
-  const APP_VERSION = '4.3.6';
+  const APP_VERSION = '4.4.2';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
   const SUBJECTS = [
@@ -1184,10 +1184,15 @@
           }
         }
       } else if (p.type === 'learn') {
-        // user explains what previous phrase meant
-        saveAgentKnowledge(p.phrase, raw);
-        agentPending = null;
-        reply = `Запомнил: «${p.phrase}» → «${raw}». В следующий раз пойму. Можно сразу выполнить — напиши эту команду.`;
+        // user explains what previous phrase meant — но новая команда («удали…», «добавь…») не объяснение
+        if (/^(добавь|добавить|удали|удалить|убери|сотри|перенес|перемест|открой|покажи|позвони|напомни|создай|сделай|заведи)/i.test(String(raw).trim())) {
+          agentPending = null;
+          reply = `Не понял «${raw}». Скажи короче, например: «добавь урок физика пн 9:00», «удали автобус 537», «перенеси математику на среду».`;
+        } else {
+          saveAgentKnowledge(p.phrase, raw);
+          agentPending = null;
+          reply = `Запомнил: «${p.phrase}» → «${raw}». В следующий раз пойму. Можно сразу выполнить — напиши эту команду.`;
+        }
       } else if (p.type === 'ai_apply') {
         // user pastes response from external neural net - try to execute as command or store
         agentPending = null;
@@ -1315,7 +1320,7 @@
       const fromD = fromM ? parseDayToken(fromM[1]) : null;
       const toD = toM ? parseDayToken(toM[1]) : null;
       let subject = '';
-      const sm = lower.match(/(?:перенес\w*|перемест\w*|перекинь|сдвинь)\s+(?:все\s+уроки\s+)?(.+?)\s+с\s+/);
+      const sm = lower.match(/(?:перенес[а-яёa-z0-9_]*|перемест[а-яёa-z0-9_]*|перекинь|сдвинь)\s+(?:все\s+уроки\s+)?(.+?)\s+с\s+/);
       if (sm) {
         subject = sm[1].replace(/все\s+уроки\s*/g, '').trim();
         if (subject === 'все' || subject === 'уроки') subject = '';

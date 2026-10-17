@@ -18,11 +18,11 @@
   function timeIn(n) {
     let m;
     if ((m = n.match(/(?:^|\s)(?:в|к|после|до|около)\s*(\d{1,2})[:.\s](\d{2})(?!\d)/))) return { at: +m[1] * 60 + +m[2] };
-    if ((m = n.match(/(?:^|\s)(?:в|к|после|около)\s*(\d{1,2})\s*(?:час\w*|ч)(?:\s|$)/))) return { at: +m[1] * 60 };
+    if ((m = n.match(/(?:^|\s)(?:в|к|после|около)\s*(\d{1,2})\s*(?:час[а-яёa-z0-9_]*|ч)(?:\s|$)/))) return { at: +m[1] * 60 };
     if (/через\s+полчаса/.test(n)) return { off: 30 };
     if (/через\s+(?:час|1 час)(?:\s|$)/.test(n)) return { off: 60 };
-    if ((m = n.match(/через\s+(\d{1,3})\s*(мин\w*|м\b)/))) return { off: +m[1] };
-    if ((m = n.match(/через\s+(\d{1,2})\s*(час\w*|ч\b)/))) return { off: +m[1] * 60 };
+    if ((m = n.match(/через\s+(\d{1,3})\s*(мин[а-яёa-z0-9_]*|м(?![а-яёa-z0-9_]))/))) return { off: +m[1] };
+    if ((m = n.match(/через\s+(\d{1,2})\s*(час[а-яёa-z0-9_]*|ч(?![а-яёa-z0-9_]))/))) return { off: +m[1] * 60 };
     return null;
   }
   function dayIn(n, now) {
@@ -67,7 +67,11 @@
 
   /* ───── интенты ───── */
   const INT = [];
+  A._INT = INT;   // для тестов
   const on = (re, fn, name) => INT.push({ re, fn, name });
+
+  // 00) сценарии пользователя (фраза-триггер или «запусти …»)
+  on(/./, (t) => { const sc = O.scripts && O.scripts.match(t); if (!sc) return null; O.scripts.run(sc); return R('Запускаю сценарий «' + sc.name + '».'); }, 'script');
 
   // 0) экстренное
   on(/(^|\s)(sos|опасн|экстренн|скорую|полици[юя]|заблудил|потерял(ся|ась)|мне страшно|на помощь)/, () => {
@@ -79,7 +83,7 @@
   }, 'sos');
 
   // 1) «я освободился» → ближайший автобус ОТ СЕЙЧАС (или от указанного времени), не от конца уроков
-  on(/(освобо[дж]\w*|закончил\w*|заканчива\w*|закончу|кончил|кончаю|отпустил\w*|отпустят|выхожу из школы|выхожу со школы|иду домой|пора домой|свободен|свободна|уроки (всё|все))/, (t, n, now) => {
+  on(/(освобо[дж][а-яёa-z0-9_]*|закончил[а-яёa-z0-9_]*|заканчива[а-яёa-z0-9_]*|закончу|кончил|кончаю|отпустил[а-яёa-z0-9_]*|отпустят|выхожу из школы|выхожу со школы|иду домой|пора домой|свободен|свободна|уроки (всё|все))/, (t, n, now) => {
     const ti = timeIn(n), s = S(), nm = E.nowMin(now);
     // всегда от «сейчас», если не сказали «в 12:00» / «через 10 минут»
     const freeAt = ti ? (ti.at != null ? ti.at : nm + (ti.off || 0)) : nm;
@@ -145,19 +149,20 @@
       return R(slack >= 0 ? `Да, успеваешь на ${d.time} (№${d.bus.number}): запас ${left(slack)}. Выйти до ${E.fmt(d.min - walk)}.` : `Не успеть на ${d.time}: не хватает ${left(-slack)}. Следующий — ${(E.nextBuses(s, now, { limit: 5 }).find(x => x.min > d.min) || {}).time || 'нет'}.`);
     }
     if (toSchool || (!toHome && ev.length && nm < ev[0].s)) {
-      const date = (lastE != null && nm > lastE) || !ev.length ? E.addDays(now, 1) : now, p = E.planSchool(s, date);
-      if (!p.first) return R('На это время занятий нет — в школу ехать не нужно.');
+      let date = (lastE != null && nm > lastE) || !ev.length ? E.addDays(now, 1) : now, p = E.planSchool(s, date);
+      for (let k = 2; !p.first && k <= 8; k++) { date = E.addDays(now, k); p = E.planSchool(s, date); }   // ближайший день с уроками
+      if (!p.first) return R('В ближайшие дни занятий нет — в школу ехать не нужно.');
       if (!p.options.length) return R(`К ${p.first.start} ни один рейс не успевает${p.noBuses ? ' (нет рейсов в школу)' : ''}.`, { buttons: [btn('Открыть автобусы', 'tab:buses')] });
       const b = p.options[0]; O.lastPlan = { kind: 'school', options: p.options };
-      const li = b.leaveBy - nm, day = date === now ? '' : 'Завтра ';
-      return R(`${day}Первое занятие в ${p.first.start}. Лучший автобус — №${b.number} в ${b.time}: ${date === now && li > 0 ? `выйти в ${E.fmt(b.leaveBy)} (через ${left(li)})` : `выйти в ${E.fmt(b.leaveBy)}`}, в школе в ${E.fmt(b.arrive)}, запас ${left(b.slack)}.`, { cards: p.options.map((o, i) => busCard(o, i, 'school')), buttons: [btn('Следующий рейс', 'ag:next')] });
+      const li = b.leaveBy - nm, dd = Math.round((new Date(date.getFullYear(), date.getMonth(), date.getDate()) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5), day = dd <= 0 ? '' : dd === 1 ? 'Завтра ' : ['В понедельник ', 'Во вторник ', 'В среду ', 'В четверг ', 'В пятницу ', 'В субботу ', 'В воскресенье '][E.dayIdx(date)];
+      return R(`${day}Первое занятие в ${p.first.start}. Лучший автобус — №${b.number} в ${b.time}: ${dd <= 0 && li > 0 ? `выйти в ${E.fmt(b.leaveBy)} (через ${left(li)})` : `выйти в ${E.fmt(b.leaveBy)}`}, в школе в ${E.fmt(b.arrive)}, запас ${left(b.slack)}.`, { cards: p.options.map((o, i) => busCard(o, i, 'school')), buttons: [btn('Следующий рейс', 'ag:next')] });
     }
     if (ti && ti.at != null) return homePlan(s, now, ti.at, true);
     return homePlan(s, now, lastE != null && nm < lastE ? lastE : nm, lastE != null && nm < lastE);
   }, 'bus');
 
   // 3) что сейчас / дальше
-  on(/(что (сейчас|дальше|следующ|потом|за урок)|какой (сейчас |следующий )?урок|следующий урок|где (я|мне) (сейчас|должен)|что у меня сейчас)/, (t, n, now) => {
+  on(/^(сейчас|дальше|потом|следующий|что там|сейчас урок|урок)$|(что (сейчас|дальше|следующ|потом|за урок)|какой (сейчас |следующий )?урок|следующий урок|где (я|мне) (сейчас|должен)|что у меня сейчас)/, (t, n, now) => {
     const nn = E.nowNext(S(), now), ev = E.eventsOn(S(), now);
     if (ev.holiday) return R(`Сейчас каникулы «${ev.holiday.name}». Занятий нет.`);
     if (!ev.list.length) return R('Сегодня занятий нет. Хорошего отдыха!');
@@ -167,7 +172,7 @@
   }, 'now');
 
   // 4) расписание дня / окончание уроков
-  on(/(когда|во сколько)\s+(закан|конч)\w*\s+(уроки|занят\w*|школа|день)|расписание\s+(на\s+)?(сегодня|завтра|послезавтра|\S+)|(что|какие)\s+(уроки\s+)?(сегодня|завтра|послезавтра|в (понедельник|вторник|среду|четверг|пятницу|субботу))/, (t, n, now) => {
+  on(/(когда|во сколько)\s+(закан|конч)[а-яёa-z0-9_]*\s+(уроки|занят[а-яёa-z0-9_]*|школа|день)|расписание\s+(на\s+)?(сегодня|завтра|послезавтра|\S+)|(что|какие)\s+(уроки\s+)?(сегодня|завтра|послезавтра|в (понедельник|вторник|среду|четверг|пятницу|субботу))|^уроки\s+(на\s+|в\s+)?(сегодня|завтра|послезавтра|понедельник|вторник|среду|четверг|пятницу|субботу)/, (t, n, now) => {
     const day = dayIn(n, now) || { d: now, label: 'сегодня' }, ev = E.eventsOn(S(), day.d);
     if (ev.holiday) return R(`На ${day.label} — каникулы «${ev.holiday.name}».`);
     if (!ev.list.length) return R(`На ${day.label} занятий нет.`);
@@ -177,7 +182,7 @@
   }, 'day');
 
   // 5) звонок / SMS
-  on(/(позвони|позвонить|набери|дозвон\w*|вызови|звонок)\s*(.*)/, (t, n) => { const q = n.replace(/^.*?(позвони|позвонить|набери|дозвон\w*|вызови|звонок)\s*/, '').replace(/^(мне|пожалуйста)\s+/, ''); return contact(q, 'call'); }, 'call');
+  on(/(позвони|позвонить|набери|дозвон[а-яёa-z0-9_]*|вызови|звонок)\s*(.*)/, (t, n) => { const q = n.replace(/^.*?(позвони|позвонить|набери|дозвон[а-яёa-z0-9_]*|вызови|звонок)\s*/, '').replace(/^(мне|пожалуйста)\s+/, ''); return contact(q, 'call'); }, 'call');
   on(/(напиши|отправь смс|смс|сообщи|напишу)\s+(.*)/, (t, n) => { const m = t.match(/(?:напиши|смс|сообщи)\s+(\S+)\s*[,:]?\s*(?:что\s+)?(.*)$/i); return contact(m ? m[1] : '', 'sms', m ? m[2] : ''); }, 'sms');
   function contact(q, verb, text) {
     const s = S(), list = findPeople(q);
@@ -190,8 +195,11 @@
   }
 
   // 6) домашка
-  on(/^(добавь |запиши |новое |новая )?(дз|домашк\w*|домашнее задание|задание)\s+(.+)/, (t, n, now) => {
-    const body = t.replace(/^(добавь |запиши |новое |новая )?(дз|домашк\w*|домашнее задание|задание)\s+/i, '');
+  on(/^(добавь |запиши |новое |новая |задай |задать )?(дз|домашк[а-яёa-z0-9_]*|домашнее задание|задание)\s+(.+)/, (t, n, now) => {
+    const bare = !/^(добавь |запиши |новое |новая |задай |задать )/i.test(t);
+    const body0 = t.replace(/^(добавь |запиши |новое |новая |задай |задать )?(дз|домашк[а-яёa-z0-9_]*|домашнее задание|задание)\s+/i, '');
+    if (bare && /^(на|до|к)\s+(завтра|послезавтра|сегодня|понедельник|вторник|сред|четверг|пятниц|суббот|воскресень|пн|вт|ср|чт|пт|сб|вс)/i.test(body0)) return null;   // «домашка на завтра» — это вопрос, а не добавление
+    const body = body0.replace(/^по\s+/i, '');
     const words = body.split(/\s+/); let subj = null, used = 0;
     const first = C().resolveSubject(words[0]);
     if (first && C().SUBJECTS.includes(first)) {
@@ -205,14 +213,15 @@
     const h = { id: C().uid(), subject: subj || '', title: rest, due: due ? E.dateStr(due.d) : '', done: false, priority: pr };
     return change(`ДЗ${subj ? ' по предмету «' + subj + '»' : ''}: ${rest}${due ? ', на ' + due.label : ''}${pr === 'high' ? ', важное' : ''}.`, () => S().homework.push(h), () => { const s = S(); s.homework = s.homework.filter(x => x.id !== h.id); });
   }, 'hw-add');
-  on(/(что задано|домашк\w* на|дз на|какое дз|какая домашка)/, (t, n, now) => {
+  on(/^(дз|домашк[а-яёa-z0-9_]*|домашнее задание|задания?|что делать)$/, (t, n, now) => { const g = E.hwGroups(S(), now), list = [...g.overdue, ...g.today, ...g.tomorrow, ...g.week]; if (!list.length) return R('Невыполненной домашки нет.'); return R(`Нужно сделать: ${list.length}.`, { cards: [`<div class="o-mini-list">${list.slice(0, 8).map(h => `<div><b>${esc(h.subject || '—')}</b><span>${esc(h.title)}${h.due ? ' · до ' + h.due.slice(8) + '.' + h.due.slice(5, 7) : ''}</span></div>`).join('')}</div>`], buttons: [btn('Открыть задачи', 'tab:tasks')] }); }, 'hw-list');
+  on(/(что задано|домашк[а-яёa-z0-9_]* на|дз на|какое дз|какая домашка)/, (t, n, now) => {
     const g = E.hwGroups(S(), now), day = dayIn(n, now); let list;
     if (day) { const ds = E.dateStr(day.d); list = S().homework.filter(h => !h.done && h.due === ds); } else list = [...g.overdue, ...g.today, ...g.tomorrow, ...g.week];
     if (!list.length) return R(day ? `На ${day.label} ничего не задано.` : 'Невыполненной домашки нет.');
     return R(`Нужно сделать: ${list.length}.`, { cards: [`<div class="o-mini-list">${list.slice(0, 8).map(h => `<div><b>${esc(h.subject || '—')}</b><span>${esc(h.title)}${h.due ? ' · до ' + h.due.slice(8) + '.' + h.due.slice(5, 7) : ''}</span></div>`).join('')}</div>`], buttons: [btn('Открыть задачи', 'tab:tasks')] });
   }, 'hw-list');
-  on(/(сделал|сделала|выполнил\w*|сдал\w*)\s+(дз|домашк\w*|задание)?\s*(по\s+)?(.*)/, (t, n) => {
-    const q = n.replace(/^.*?(сделал\w*|выполнил\w*|сдал\w*)\s+(дз|домашк\w*|задание)?\s*(по\s+)?/, '').trim(), s = S();
+  on(/(сделал|сделала|выполнил[а-яёa-z0-9_]*|сдал[а-яёa-z0-9_]*)\s+(дз|домашк[а-яёa-z0-9_]*|задание)?\s*(по\s+)?(.*)/, (t, n) => {
+    const q = n.replace(/^.*?(сделал[а-яёa-z0-9_]*|выполнил[а-яёa-z0-9_]*|сдал[а-яёa-z0-9_]*)\s+(дз|домашк[а-яёa-z0-9_]*|задание)?\s*(по\s+)?/, '').trim(), s = S();
     const pend = s.homework.filter(h => !h.done), subj = q ? C().resolveSubject(q) : null;
     const m = q ? pend.filter(h => N(h.subject) === N(subj) || N(h.title).includes(q)) : pend;
     if (!m.length) return R(q ? `Не нашёл невыполненную домашку по «${q}».` : 'Невыполненной домашки нет.');
@@ -221,13 +230,13 @@
   }, 'hw-done');
 
   // 7) напоминания
-  on(/^напомни\w*\s*(?:мне)?\s*(.*)/, (t, n, now) => {
-    let rest = t.replace(/^напомни\w*\s*(?:мне)?\s*/i, ''); const ti = timeIn(N(rest)), day = dayIn(N(rest), now);
+  on(/^напомни[а-яёa-z0-9_]*\s*(?:мне)?\s*(.*)/, (t, n, now) => {
+    let rest = t.replace(/^напомни[а-яёa-z0-9_]*\s*(?:мне)?\s*/i, ''); const ti = timeIn(N(rest)), day = dayIn(N(rest), now);
     if (!ti && !day) return R('Когда напомнить? Например: «напомни через 30 минут позвонить маме» или «напомни завтра в 8:00 взять форму».');
     let at = new Date(now);
     if (day) at = new Date(day.d);
     if (ti && ti.off != null) at = new Date(now.getTime() + ti.off * 60000); else if (ti && ti.at != null) { at.setHours(Math.floor(ti.at / 60), ti.at % 60, 0, 0); if (!day && at <= now) at = E.addDays(at, 1); } else { at.setHours(8, 0, 0, 0); }
-    rest = rest.replace(/через\s+(?:полчаса|час|\d+\s*\S+)/i, '').replace(/(?:^|\s)(?:в|к)\s*\d{1,2}[:.]\d{2}/i, '').replace(/\b(послезавтра|завтра|сегодня)\b/i, '').replace(/\s+/g, ' ').trim() || 'Напоминание';
+    rest = rest.replace(/через\s+(?:полчаса|час|\d+\s*\S+)/i, '').replace(/(?:^|\s)(?:в|к)\s*\d{1,2}[:.]\d{2}/i, '').replace(/(?:^|[^а-яёa-z0-9_])(послезавтра|завтра|сегодня)(?![а-яёa-z0-9_])/i, '').replace(/\s+/g, ' ').trim() || 'Напоминание';
     const r = { id: C().uid(), text: rest[0].toUpperCase() + rest.slice(1), at: at.toISOString(), done: false };
     return change(`Напомню «${r.text}» ${at.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`, () => { (S().reminders = S().reminders || []).push(r); O.notify && O.notify.ask(); }, () => { S().reminders = S().reminders.filter(x => x.id !== r.id); });
   }, 'remind');
@@ -244,12 +253,12 @@
   }, 'pack');
 
   // 9) настройки словами
-  on(/(?:тем[ауы]?|режим)\s+(темн\w*|светл\w*|авто\w*|amoled|амолед\w*)|(?:темн\w*|светл\w*)\s+(?:тем[ауы]|режим)/, (t, n) => { const v = /светл/.test(n) ? 'light' : /авто/.test(n) ? 'auto' : /amoled|амол/.test(n) ? 'amoled' : 'dark'; return setting(`Тема: ${({ light: 'светлая', dark: 'тёмная', auto: 'как в системе', amoled: 'AMOLED' })[v]}.`, { theme: v }); }, 'theme');
-  on(/(бренд|стиль|оформление|оболочк\w*)\s+(орбит\w*|ритм|вектор|закат)/, (t, n) => { const id = /орбит/.test(n) ? 'orbit' : /ритм/.test(n) ? 'ritm' : /вектор/.test(n) ? 'vektor' : 'zakat'; return setting(`Оформление: «${O.brands[id].name}». Теперь меня зовут ${O.brands[id].agent}.`, { brand: id }); }, 'brand');
-  on(/(крупн\w*|больше|увелич\w*)\s*(шрифт|текст)|шрифт\s*(крупн|больше)/, () => setting('Увеличил текст.', { textScale: Math.min(140, (+S().settings.textScale || 100) + 10) }), 'font+');
-  on(/(мельч\w*|меньше|уменьш\w*)\s*(шрифт|текст)|шрифт\s*(мельч|меньше)/, () => setting('Уменьшил текст.', { textScale: Math.max(85, (+S().settings.textScale || 100) - 10) }), 'font-');
-  on(/(?:до остановки|идти до остановки|иду до остановки)\s*(\d{1,2})\s*мин|(\d{1,2})\s*мин\w*\s*(?:до остановки|иду до остановки)/, (t, n, now, m) => { const v = +(m[1] || m[2]), s = S(); if (!s.buses.length) return R('Сначала добавьте автобус.'); const prev = s.buses.map(b => b.walkMin); return change(`Время до остановки для всех маршрутов: ${v} мин.`, () => s.buses.forEach(b => b.walkMin = v), () => s.buses.forEach((b, i) => b.walkMin = prev[i])); }, 'walk');
-  on(/(?:на выход|на сборы|собираюсь)\s*(\d{1,2})\s*мин|(\d{1,2})\s*мин\w*\s*(?:на выход|на сборы)/, (t, n, now, m) => { const v = +(m[1] || m[2]); return setting(`Время на выход из школы: ${v} мин. Учту при расчёте автобусов.`, { exitMin: v }); }, 'exit');
+  on(/(?:тем[ауы]?|режим)\s+(темн[а-яёa-z0-9_]*|светл[а-яёa-z0-9_]*|авто[а-яёa-z0-9_]*|amoled|амолед[а-яёa-z0-9_]*)|(?:темн[а-яёa-z0-9_]*|светл[а-яёa-z0-9_]*)\s+(?:тем[ауы]|режим)/, (t, n) => { const v = /светл/.test(n) ? 'light' : /авто/.test(n) ? 'auto' : /amoled|амол/.test(n) ? 'amoled' : 'dark'; return setting(`Тема: ${({ light: 'светлая', dark: 'тёмная', auto: 'как в системе', amoled: 'AMOLED' })[v]}.`, { theme: v }); }, 'theme');
+  on(/(бренд|стиль|оформление|оболочк[а-яёa-z0-9_]*)\s+(орбит[а-яёa-z0-9_]*|ритм|вектор|закат)/, (t, n) => { const id = /орбит/.test(n) ? 'orbit' : /ритм/.test(n) ? 'ritm' : /вектор/.test(n) ? 'vektor' : 'zakat'; return setting(`Оформление: «${O.brands[id].name}». Теперь меня зовут ${O.brands[id].agent}.`, { brand: id }); }, 'brand');
+  on(/(крупн[а-яёa-z0-9_]*|больше|увелич[а-яёa-z0-9_]*)\s*(шрифт|текст)|шрифт\s*(крупн|больше)/, () => setting('Увеличил текст.', { textScale: Math.min(140, (+S().settings.textScale || 100) + 10) }), 'font+');
+  on(/(мельч[а-яёa-z0-9_]*|меньше|уменьш[а-яёa-z0-9_]*)\s*(шрифт|текст)|шрифт\s*(мельч|меньше)/, () => setting('Уменьшил текст.', { textScale: Math.max(85, (+S().settings.textScale || 100) - 10) }), 'font-');
+  on(/(?:до остановки|идти до остановки|иду до остановки)\s*(\d{1,2})\s*мин|(\d{1,2})\s*мин[а-яёa-z0-9_]*\s*(?:до остановки|иду до остановки)/, (t, n, now, m) => { const v = +(m[1] || m[2]), s = S(); if (!s.buses.length) return R('Сначала добавьте автобус.'); const prev = s.buses.map(b => b.walkMin); return change(`Время до остановки для всех маршрутов: ${v} мин.`, () => s.buses.forEach(b => b.walkMin = v), () => s.buses.forEach((b, i) => b.walkMin = prev[i])); }, 'walk');
+  on(/(?:на выход|на сборы|собираюсь)\s*(\d{1,2})\s*мин|(\d{1,2})\s*мин[а-яёa-z0-9_]*\s*(?:на выход|на сборы)/, (t, n, now, m) => { const v = +(m[1] || m[2]); return setting(`Время на выход из школы: ${v} мин. Учту при расчёте автобусов.`, { exitMin: v }); }, 'exit');
   on(/^(настройки|открой настройки|параметры)$/, () => R('Открываю настройки.', { buttons: [btn('Настройки', 'tab:settings')] }), 'settings');
   function setting(text, patch) { const s = S(), prev = {}; Object.keys(patch).forEach(k => prev[k] = s.settings[k]); return change(text, () => { Object.assign(s.settings, patch); C().applyTheme(); }, () => { Object.assign(s.settings, prev); C().applyTheme(); }); }
 
@@ -274,7 +283,7 @@
   }, 'memory');
   on(/^(забудь все|забудь всё|очисти память)/, () => R('Стереть память агента (привычки, заметки, связи контактов)?', { buttons: [btn('Да, забыть', 'ag:forget'), btn('Нет', 'ag:no:x')] }), 'forget');
   on(/^(отмени|отмена|верни назад)$/, () => { const u = undoStack.pop(); if (!u) return R('Нечего отменять.'); u(); C().save(); C().render(); return R('Отменено.'); }, 'undo');
-  on(/^(алло|алё|але|ало|ау|эй|прив|привет|приветик|здравствуй\w*|здорово|хай|hi|hello|ку|добрый (день|вечер)|доброе утро|доброй ночи)( (алло|алё|але|ало|орби|орбита))*$/, () => {
+  on(/^(алло|алё|але|ало|ау|эй|прив|привет|приветик|здравствуй[а-яёa-z0-9_]*|здорово|хай|hi|hello|ку|добрый (день|вечер)|доброе утро|доброй ночи)( (алло|алё|але|ало|орби|орбита))*$/, () => {
     const h = new Date().getHours();
     const hi = h < 5 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер';
     return R(hi + '! Я на связи. Скажи «я освободился» — подберу автобус, или «что дальше» — покажу день.', { buttons: sug() });
@@ -285,7 +294,7 @@
     if (/^как/.test(n)) return R('Всё хорошо, работаю. Чем помочь?', { buttons: sug() });
     return R('Хорошо.', { buttons: sug() });
   }, 'smalltalk');
-  on(/^(помощь|помоги мне|что (ты )?(умеешь|можешь)|команды|привет|здравствуй\w*|hi|хай)$/, () => {
+  on(/^(помощь|помоги мне|что (ты )?(умеешь|можешь)|команды)$/, () => {
     const skills = (O.actions && O.actions.SKILLS) || [];
     const byCat = {};
     skills.forEach(sk => { (byCat[sk.cat] || (byCat[sk.cat] = [])).push(sk); });
@@ -301,8 +310,35 @@
     });
   }, 'help');
 
-  const PRI = ['sos', 'remind', 'hw-add', 'hw-done', 'undo', 'forget', 'remember', 'alias', 'memory', 'help', 'day', 'lesson-move', 'club-add', 'bus-add', 'diary', 'theme', 'undo'];
-  INT.sort((a, b) => { const x = PRI.indexOf(a.name), y = PRI.indexOf(b.name); return (x < 0 ? 99 : x) - (y < 0 ? 99 : y); });
+  // порядок: сначала сценарии/SOS и ТОЧНЫЕ команды-изменения, потом общие «справочные» правила, последним — обучение алиасам
+  const PRI = ['script', 'sos', 'undo', 'remind', 'hw-add', 'hw-done', 'forget', 'remember', 'lesson-del', 'lesson-rm', 'lesson-move', 'lesson-add', 'club-del', 'club-add', 'bus-del', 'bus-add', 'person-add', 'diary', 'note', 'goal', 'theme', 'memory', 'help', 'day', 'now', 'pack'];
+  const sortInt = () => { if (INT._s) return; INT._s = 1; const w = n => { const i = PRI.indexOf(n); return i < 0 ? (n === 'alias' ? 999 : 500) : i; }; INT.sort((a, b) => w(a.name) - w(b.name)); };
+
+
+  /* ───── горизонтальная прокрутка подсказок на ПК: колесо, перетаскивание, стрелки ───── */
+  (function () {
+    const SEL = '.o-chips-row, .o-live-chips, .o-agent-tabs';
+    const host = e => (e.target && e.target.closest) ? e.target.closest(SEL) : null;
+    document.addEventListener('wheel', e => {
+      const el = host(e); if (!el || el.scrollWidth <= el.clientWidth + 1) return;
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { el.scrollLeft += e.deltaY; e.preventDefault(); }
+    }, { passive: false });
+    let drag = null, moved = false, justDragged = false;
+    document.addEventListener('pointerdown', e => {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      const el = host(e); if (!el || el.scrollWidth <= el.clientWidth + 1) return;
+      drag = { el, x: e.clientX, left: el.scrollLeft }; moved = false;
+    });
+    document.addEventListener('pointermove', e => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x;
+      if (!moved && Math.abs(dx) > 5) { moved = true; drag.el.classList.add('dragging'); }
+      if (moved) drag.el.scrollLeft = drag.left - dx;
+    });
+    const end = () => { if (!drag) return; drag.el.classList.remove('dragging'); justDragged = moved; drag = null; setTimeout(() => { justDragged = false; }, 60); };
+    document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
+    document.addEventListener('click', e => { if (justDragged) { e.preventDefault(); e.stopPropagation(); } }, true);
+  })();
 
   /* ───── главный обработчик ───── */
 
@@ -317,13 +353,16 @@
     return R('Открыл раздел.', { buttons: [btn('Ещё разделы', 'tab:more')] });
   }, 'go');
 
-  on(/(дни?\s*рожден|ближайшие\s*др|\bдр\b(?!\w)|именин)/, (t, n) => {
-    if (/добав|поставь|запиш|у\s+\S+\s+\d/.test(n)) {
+  on(/((?:ден[ьи]|дни)\s*рожден|ближайшие\s*др|(?:^|[^а-яёa-z0-9_])др(?![а-яёa-z0-9_])|именин)/, (t, n) => {
+    if (/добав|поставь|запиш|у\s+\S+\s+\d|\d{1,2}[./-]\d{1,2}/.test(n)) {
       const m = t.match(/(?:др|день рождения|др\.?)\s+(.+?)\s+(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)/i) || t.match(/у\s+(\S+)\s+(\d{1,2}[./-]\d{1,2})/i);
       if (m) {
         const date = O.actions.parseDate(m[2]);
         if (!date) return R('Дата в формате ДД.ММ или ДД.ММ.ГГГГ.');
-        const r = O.actions.setBirthday(m[1], date);
+        const who = findPeople(m[1].replace(/^у\s+/i, ''));
+        if (!who.length) return R(`Не нашёл «${m[1].replace(/^у\s+/i, '')}» в контактах.`, { buttons: [btn('Добавить контакт', 'person:new'), btn('Контакты', 'tab:contacts')] });
+        if (who.length > 1) return R('Кому именно?', { buttons: who.slice(0, 6).map(p => btn(p.name, 'cmd:др ' + p.name + ' ' + m[2])) });
+        const r = O.actions.setBirthday(who[0], date);
         if (r.candidates) return R(r.msg, { buttons: r.candidates.map(p => btn(p.name, 'cmd:др ' + p.name + ' ' + m[2])) });
         if (r.ok && r.undo) { undoStack.push(r.undo); return R(r.msg, { buttons: [btn('Отменить', 'ag:undo')] }); }
         return R(r.msg || 'Не вышло.');
@@ -336,39 +375,41 @@
     return R('Ближайшие ДР:\n' + lines.join('\n'), { buttons: [btn('Контакты', 'tab:contacts')] });
   }, 'bday');
 
-  on(/^(заметка|запиши|запиши заметку|note)\s+(.+)/i, (t, n, now, m) => {
-    const text = (m && m[2]) || t.replace(/^(заметка|запиши|запиши заметку|note)\s+/i, '');
+  on(/^(?:добавь\s+)?(заметка|заметку|запиши|запиши заметку|note)\s+(.+)/i, (t, n, now, m) => {
+    const text = (m && m[2]) || t.replace(/^(?:добавь\s+)?(заметка|заметку|запиши|запиши заметку|note)\s+/i, '');
     const r = O.actions.addNote(text.trim());
     if (r.ok && r.undo) { undoStack.push(r.undo); return R(r.msg, { buttons: [btn('Отменить', 'ag:undo'), btn('Заметки', 'tab:notes')] }); }
     return R(r.msg);
   }, 'note');
 
-  on(/^(цель|новая цель)\s+(.+)/i, (t, n, now, m) => {
+  on(/^(?:добавь\s+)?(цель|новая цель)\s+(.+)/i, (t, n, now, m) => {
     const title = (m && m[2]) || '';
     const r = O.actions.addGoal(title.trim());
     if (r.ok && r.undo) { undoStack.push(r.undo); return R(r.msg, { buttons: [btn('Отменить', 'ag:undo'), btn('Задачи', 'tab:tasks')] }); }
     return R(r.msg);
   }, 'goal');
 
+  // «добавь урок физика пн вт 9:00-9:40» — несколько дней, диапазон времени, предлоги (в JS (?![а-яёa-z0-9_]) не работает с кириллицей)
+  const DW = { пн: 0, пон: 0, понедельник: 0, вт: 1, вторник: 1, ср: 2, среда: 2, среду: 2, чт: 3, четверг: 3, пт: 4, пятница: 4, пятницу: 4, сб: 5, суббота: 5, субботу: 5, вс: 6, воскресенье: 6 };
   on(/^(добавь|добавить|новый)\s+урок\s+(.+)/i, (t, n) => {
-    const rest = t.replace(/^(добавь|добавить|новый)\s+урок\s+/i, '').trim();
-    const day = O.actions.parseDay(rest, new Date());
-    const time = O.actions.parseTime(rest);
-    let subject = rest;
-    if (day) subject = subject.replace(new RegExp(day.label, 'i'), '');
-    if (time) subject = subject.replace(/\d{1,2}[:.\s]\d{2}/, '');
-    subject = subject.replace(/\b(пн|вт|ср|чт|пт|сб|вс|понедельник|вторник|сред[ауые]|четверг|пятниц\w*|суббот\w*|воскресен\w*)\b/gi, '').trim();
-    try {
-      const rs = C().resolveSubject && C().resolveSubject(subject);
-      if (rs) subject = rs;
-    } catch (e) {}
-    if (!subject || day == null || !time) {
-      return R('Формат: «добавь урок Математика пн 8:30». Можно короче через старый диалог: «добавь урок».', { buttons: [btn('Добавить урок', 'cmd:добавь урок'), btn('Уроки', 'tab:schedule')] });
+    const rest = N(t).replace(/^(добавь|добавить|новый)\s+урок\s+/, '');
+    const times = (rest.match(/\d{1,2}[:.]\d{2}/g) || []).map(x => x.replace('.', ':').replace(/^(\d):/, '0$1:'));
+    const days = [];
+    const words = rest.replace(/\d{1,2}[:.]\d{2}/g, ' ').replace(/[,;]/g, ' ').split(/\s+/).filter(Boolean);
+    const subj = [];
+    words.forEach(w => { const r = w.match(/^([а-я]+)[-–]([а-я]+)$/); if (r && DW[r[1]] != null && DW[r[2]] != null) { for (let d = DW[r[1]], k = 0; k < 7; k++, d = (d + 1) % 7) { if (!days.includes(d)) days.push(d); if (d === DW[r[2]]) break; } } else if (DW[w] != null) { if (!days.includes(DW[w])) days.push(DW[w]); } else if (!/^(в|во|на|по|и|с|до|-|–)$/.test(w)) subj.push(w); });
+    if (!days.length) { const d = O.actions.parseDay(rest, new Date()); if (d) { days.push(d.idx); const i = subj.indexOf(d.label); if (i >= 0) subj.splice(i, 1); } }
+    let subject = subj.join(' ').trim();
+    try { const rs = C().resolveSubject && C().resolveSubject(subject); if (rs) subject = rs; } catch (e) {}
+    if (!subject || !days.length || !times.length) {
+      return R('Формат: «добавь урок Математика пн вт 8:30» или «… пн 8:30-9:10». Не хватает: ' + [!subject && 'предмета', !days.length && 'дня', !times.length && 'времени'].filter(Boolean).join(', ') + '.', { buttons: [btn('Добавить урок', 'cmd:добавь урок'), btn('Уроки', 'tab:schedule')] });
     }
-    const r = O.actions.addLesson({ day: day.idx, subject, start: time });
-    if (r.ok && r.undo) { undoStack.push(r.undo); return R(r.msg, { buttons: [btn('Отменить', 'ag:undo'), btn('Расписание', 'tab:schedule')] }); }
-    return R(r.msg);
+    const msgs = [], undos = [];
+    days.forEach(d => { const r = O.actions.addLesson({ day: d, subject, start: times[0], end: times[1] }); msgs.push(r.msg); if (r.undo) undos.push(r.undo); });
+    if (undos.length) { undoStack.push(() => undos.forEach(u => u())); return R(msgs.join('\n'), { buttons: [btn('Отменить', 'ag:undo'), btn('Расписание', 'tab:schedule')] }); }
+    return R(msgs.join('\n'));
   }, 'lesson-add');
+  on(/^добавь\s+(автобус|кружок|контакт)\s*$/, (t, n, now, m) => R({ 'автобус': 'Какой автобус? Скажи номер, направление и время: «добавь автобус 537 домой 12:52 13:40».', 'кружок': 'Скажи: «добавь кружок шахмат ср 15:00».', 'контакт': 'Скажи: «добавь контакт Мама +79001234567».' }[m[1]], { buttons: [btn('Автобусы', 'tab:buses')] }), 'bus-add');
 
   on(/^(удали|удалить|очисти)\s+(расписание|уроки)\s+(на\s+)?(.+)/i, (t, n) => {
     const day = O.actions.parseDay(t, new Date());
@@ -395,55 +436,138 @@
     });
   }, 'pack');
 
-  on(/^(добавь|добавить)\s+(контакт|человека|человека)\s+(.+)/i, (t, n) => {
-    const name = t.replace(/^(добавь|добавить)\s+(контакт|человека|человека)\s+/i, '').trim();
-    const r = O.actions.addPerson({ name });
-    if (r.ok && r.undo) { undoStack.push(r.undo); return R(r.msg, { buttons: [btn('Отменить', 'ag:undo'), btn('Открыть контакты', 'tab:contacts')] }); }
-    return R(r.msg);
-  }, 'person-add');
 
 
   // ─── этап A: перенос, кружок, автобус, дневник, тема, отмена ───
-  on(/^(перенес\w*|перемест\w*|сдвин\w*)\s+(.+)/i, (t, n) => {
-    const rest = t.replace(/^(перенес\w*|перемест\w*|сдвин\w*)\s+/i, '').trim();
-    const day = O.actions.parseDay(rest, new Date());
-    const time = O.actions.parseTime(rest);
-    let subj = rest;
-    if (day) subj = subj.replace(new RegExp(day.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), '');
-    if (time) subj = subj.replace(/\d{1,2}[:.\s]\d{2}/, '');
-    subj = subj.replace(/\b(на|в|к|пн|вт|ср|чт|пт|сб|вс|понедельник|вторник|сред[ауые]|четверг|пятниц\w*|суббот\w*|воскресен\w*)\b/gi, '').trim();
-    try { const rs = C().resolveSubject && C().resolveSubject(subj); if (rs) subj = rs; } catch (e) {}
-    if (!subj || day == null) return R('Формат: «перенеси математику на среду» или «перенеси мат на пт 10:00».');
-    const r = O.actions.moveLesson(subj, day.idx, time || undefined);
-    if (r.candidates) return R(r.msg, { buttons: r.candidates.map(l => btn(l.subject + ' ' + (l.start || ''), 'cmd:перенеси ' + l.subject + ' на ' + day.label + (time ? ' ' + time : ''))) });
-    if (r.ok && r.undo) { undoStack.push(r.undo); return R(r.msg, { buttons: [btn('Отменить', 'ag:undo'), btn('Уроки', 'tab:schedule')] }); }
+
+
+
+
+  /* ───── разбор «день / время / кабинет» в командах (кириллица-безопасно) ───── */
+  const CYR = '[\\wа-яёА-ЯЁ]';
+  const DAYWORD = '(?:понедельник' + CYR + '*|вторник' + CYR + '*|сред' + CYR + '*|четверг' + CYR + '*|пятниц' + CYR + '*|суббот' + CYR + '*|воскресень' + CYR + '*|пн|вт|ср|чт|пт|сб|вс|сегодня|завтра|послезавтра)';
+  const DAYS_SHORT = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+  const RE_DAYPHRASE = new RegExp('(?:^|\\s)(?:(?:на|в|во|к|по)\\s+)?' + DAYWORD + '(?=\\s|$|[.,;])', 'gi');
+  const RE_TIMEPHRASE = /(?:^|\s)(?:(?:в|к|с|до|на)\s+)?\d{1,2}[:.]\d{2}(?=\s|$|[.,;])/g;
+  function splitCmd(rest) {
+    let txt = String(rest || '').trim(), room = '';
+    const rm = txt.match(/(?:^|\s|,)(?:каб(?:инет)?\.?|ауд(?:итория)?\.?)\s*№?\s*([0-9a-zа-я\/-]+)/i);
+    if (rm) { room = rm[1]; txt = txt.replace(rm[0], ' '); }
+    txt = txt.replace(/\s[-—–]\s.*$/, ' ').replace(/\s*[-—–]\s*$/, ' ');
+    const day = O.actions.parseDay(txt, new Date()), time = O.actions.parseTime(txt);
+    txt = txt.replace(RE_DAYPHRASE, ' ').replace(RE_TIMEPHRASE, ' ').replace(/(?:^|\s)(?:на|в|к|с)(?=\s*$)/gi, ' ')
+      .replace(/\s+/g, ' ').replace(/^[\s,.:;-]+|[\s,.:;-]+$/g, '');
+    return { day, time, room, text: txt };
+  }
+  const addMin = (t, m) => E.fmt((E.toMin(t) || 0) + m);
+  const askOrDo = (t, q, doFn) => {
+    const auto = (S().settings.agentAutonomy || 'smart') !== 'ask';
+    if (auto || /!confirm\s*$/.test(t)) return doFn();
+    return R(q, { buttons: [btn('Да, удалить', 'cmd:' + t.replace(/\s*!confirm\s*$/, '') + ' !confirm'), btn('Нет', 'ag:noop')] });
+  };
+  const undoReply = (r, extra) => {
+    if (r.ok && r.undo) { undoStack.push(r.undo); return R(r.msg, { buttons: [btn('Отменить', 'ag:undo'), ...(extra || [])] }); }
     return R(r.msg || 'Не вышло.');
+  };
+  const subjOf = txt => { let x = String(txt || '').trim(); try { const rs = x && C().resolveSubject && C().resolveSubject(x); if (rs) x = rs; } catch (e) {} return x; };
+  const stemOf = q => { const x = N(q).trim(); return x.length > 5 ? x.slice(0, -2) : x; };
+  const sameSubj = (name, q) => { const a = N(name), b = N(q); return !!b && (a.includes(b) || b.includes(a) || a.includes(stemOf(b))); };
+
+  on(/^(удали|удалить|убери|сотри)\s+урок(?![\wа-яё])\s*(.*)$/i, (t) => {
+    const sp = splitCmd(t.replace(/^\S+\s+урок\s*/i, '').replace(/\s*!confirm\s*$/, ''));
+    const q = subjOf(sp.text);
+    if (!q) return R('Какой урок удалить? Например: «удали урок физика пн».');
+    let list = (S().lessons || []).filter(l => sameSubj(l.subject, q));
+    if (sp.day) list = list.filter(l => l.day === sp.day.idx);
+    if (sp.time) list = list.filter(l => l.start === sp.time);
+    if (!list.length) return R(`Не нашёл урок «${q}»${sp.day ? ' на ' + sp.day.label : ''}.`, { buttons: [btn('Уроки', 'tab:schedule')] });
+    if (list.length > 1) return R('Какой именно?', { buttons: list.slice(0, 6).map(l => btn(`${l.subject} ${DAYS_SHORT[l.day]} ${l.start}`, `cmd:удали урок ${l.subject} ${DAYS_SHORT[l.day]} ${l.start}`)) });
+    const l = list[0];
+    return askOrDo(t, `Удалить «${l.subject}» (${DAYS_SHORT[l.day]} ${l.start})?`, () => undoReply(O.actions.removeLesson(l.id)));
+  }, 'lesson-rm');
+
+  on(/^(перенес[\wа-яё]*|перемест[\wа-яё]*|сдвин[\wа-яё]*|перекин[\wа-яё]*)\s+(.+)/i, (t) => {
+    let rest = t.replace(/^\S+\s+/, '').replace(/^(?:все\s+)?урок[\wа-яё]*\s+/i, '').trim();
+    let from = null;
+    const fm = rest.match(new RegExp('(?:^|\\s)с\\s+(' + DAYWORD + ')(?=\\s|$)', 'i'));
+    if (fm) { from = O.actions.parseDay(fm[1], new Date()); rest = rest.replace(fm[0], ' '); }
+    const sp = splitCmd(rest);
+    const subj = subjOf(sp.text.replace(/(?:^|\s)урок[\wа-яё]*(?=\s|$)/gi, ' ').replace(/\s+/g, ' ').trim());
+    if (!subj || (!sp.day && !sp.time)) return R('Формат: «перенеси математику на среду», «перенеси мат на пт 10:00» или «перенеси мат с пн на ср».');
+    const r = O.actions.moveLesson(subj, sp.day ? sp.day.idx : null, sp.time || undefined, from ? from.idx : null);
+    if (r.candidates) {
+      const tail = (sp.day ? ' на ' + DAYS_SHORT[sp.day.idx] : '') + (sp.time ? ' ' + sp.time : '');
+      return R(r.msg + ' Выбери:', { buttons: r.candidates.map(l => btn(`${l.subject} ${DAYS_SHORT[l.day]} ${l.start || ''}`, `cmd:перенеси ${l.subject} с ${DAYS_SHORT[l.day]}${tail}`)) });
+    }
+    return undoReply(r, [btn('Уроки', 'tab:schedule')]);
   }, 'lesson-move');
 
-  on(/^(добавь|добавить)\s+кружок\s+(.+)/i, (t, n) => {
-    const rest = t.replace(/^(добавь|добавить)\s+кружок\s+/i, '').trim();
-    const day = O.actions.parseDay(rest, new Date());
-    const time = O.actions.parseTime(rest);
-    let name = rest;
-    if (day) name = name.replace(new RegExp(day.label, 'i'), '');
-    if (time) name = name.replace(/\d{1,2}[:.\s]\d{2}/, '');
-    name = name.replace(/\b(пн|вт|ср|чт|пт|сб|вс|понедельник|вторник|сред[ауые]|четверг|пятниц\w*|суббот\w*|воскресен\w*)\b/gi, '').trim();
-    if (!name || day == null || !time) return R('Формат: «добавь кружок шахматы ср 15:00».');
-    const r = O.actions.addClub({ day: day.idx, name, start: time });
-    if (r.ok && r.undo) { undoStack.push(r.undo); return R(r.msg, { buttons: [btn('Отменить', 'ag:undo')] }); }
-    return R(r.msg);
+  on(/^(добавь|добавить|новый|создай|сделай|заведи)\s+кружок\s+(.+)/i, (t) => {
+    const sp = splitCmd(t.replace(/^\S+\s+кружок\s+/i, ''));
+    const name = sp.text.replace(/^[«"]|[»"]$/g, '');
+    const miss = [!name && 'название', !sp.day && 'день', !sp.time && 'время'].filter(Boolean);
+    if (miss.length) return R('Не хватает: ' + miss.join(', ') + '. Скажи так: «добавь кружок шахматы ср 15:00».');
+    return undoReply(O.actions.addClub({ day: sp.day.idx, name: name[0].toUpperCase() + name.slice(1), start: sp.time, end: addMin(sp.time, 60), place: sp.room }), [btn('Расписание', 'tab:schedule')]);
   }, 'club-add');
 
-  on(/^(добавь|добавить)\s+автобус\s+(.+)/i, (t, n) => {
-    const rest = t.replace(/^(добавь|добавить)\s+автобус\s+/i, '').trim();
-    const num = (rest.match(/\d{1,4}/) || [])[0];
-    const dir = /школ/.test(E.N(rest)) ? 'school' : 'home';
-    const times = rest.match(/\d{1,2}[:.]\d{2}/g) || [];
-    if (!num || !times.length) return R('Формат: «добавь автобус 537 домой 12:52 13:40».');
-    const r = O.actions.addBus({ number: num, dir, times: times.map(x => x.replace('.', ':')) });
-    if (r.ok && r.undo) { undoStack.push(r.undo); return R(r.msg, { buttons: [btn('Отменить', 'ag:undo'), btn('Автобусы', 'tab:buses')] }); }
-    return R(r.msg);
+  on(/^(удали|удалить|убери|сотри)\s+кружок\s+(.+)/i, (t) => {
+    const q = t.replace(/^\S+\s+кружок\s+/i, '').replace(/\s*!confirm\s*$/, '').trim();
+    const list = (S().clubs || []).filter(c => sameSubj(c.name, q));
+    if (!list.length) return R(`Не нашёл кружок «${q}».`, { buttons: [btn('Расписание', 'tab:schedule')] });
+    if (list.length > 1) return R('Какой именно?', { buttons: list.slice(0, 6).map(c => btn(`${c.name} ${DAYS_SHORT[c.day]} ${c.start}`, `cmd:удали кружок ${c.name}`)) });
+    const c = list[0];
+    return askOrDo(t, `Удалить кружок «${c.name}»?`, () => undoReply(O.actions.removeClub(c.id)));
+  }, 'club-del');
+
+  on(/^(добавь|добавить|новый|создай|сделай|заведи)\s+(автобус|маршрут|рейс)(?![\wа-яё])\s+(.+)$/i, (t) => {
+    const rest = t.replace(/^\S+\s+\S+\s*/, '').trim();
+    const times = (rest.match(/\d{1,2}[:.]\d{2}/g) || []).map(x => { const [h, m] = x.split(/[:.]/); return String(h).padStart(2, '0') + ':' + m; });
+    let r2 = rest.replace(/\d{1,2}[:.]\d{2}/g, ' ');
+    const grab = re => { const m = r2.match(re); if (m) r2 = r2.replace(m[0], ' '); return m ? +m[1] : null; };
+    const walkMin = grab(/(?:идти|пешком|до остановки)\s*(\d{1,2})\s*мин[\wа-яё]*/i);
+    const rideMin = grab(/(?:в пути|ехать|едет|еду|езды)\s*(\d{1,3})\s*мин[\wа-яё]*/i);
+    let days = [];
+    if (/по\s+будн|будни/i.test(r2)) { days = [0, 1, 2, 3, 4]; r2 = r2.replace(/по\s+будн[\wа-яё]*|будни/ig, ' '); }
+    else if (/выходн/i.test(r2)) { days = [5, 6]; r2 = r2.replace(/по\s+выходн[\wа-яё]*|выходные/ig, ' '); }
+    else {
+      const dre = new RegExp('(?:^|\\s)(пн|вт|ср|чт|пт|сб|вс|понедельник' + CYR + '*|вторник' + CYR + '*|сред' + CYR + '*|четверг' + CYR + '*|пятниц' + CYR + '*|суббот' + CYR + '*|воскресень' + CYR + '*)(?=\\s|$|[.,;])', 'gi');
+      (r2.match(dre) || []).forEach(w => { const d = O.actions.parseDay(w.trim(), new Date()); if (d && !days.includes(d.idx)) days.push(d.idx); });
+      r2 = r2.replace(dre, ' ');
+    }
+    r2 = r2.replace(/каждый день/i, ' ');
+    const dir = /школ|учёб|учеб|на урок/i.test(r2) ? 'school' : /дом/i.test(r2) ? 'home' : null;
+    const nm = r2.match(/(?:^|[\s№])(\d{1,3}[а-яa-z]?)(?![\wа-яё])/i);
+    const number = nm ? nm[1] : '';
+    if (!number) return R('Какой номер у автобуса? Например: «добавь автобус 537 домой 12:52 13:40».');
+    if (!times.length) return R(`Во сколько ходит №${number}? Например: «добавь автобус ${number} ${dir === 'school' ? 'в школу' : 'домой'} 12:52 13:40».`);
+    const r = O.actions.addBus({ number, dir: dir || 'home', times, walkMin, rideMin, days: days.sort() });
+    return undoReply(r, [btn('Автобусы', 'tab:buses'), btn('Когда автобус домой', 'cmd:когда автобус домой')]);
   }, 'bus-add');
+
+  on(/^(удали|удалить|убери|сотри)\s+(автобус|маршрут)(?![\wа-яё])\s*(.*)$/i, (t) => {
+    const q = t.replace(/^\S+\s+\S+\s*/, '').replace(/\s*!confirm\s*$/, '').trim();
+    const buses = S().buses || [];
+    if (!buses.length) return R('Автобусов нет.', { buttons: [btn('Автобусы', 'tab:buses')] });
+    const lab = b => `№${b.number} ${E.busDir(b) === 'school' ? 'в школу' : 'домой'}`;
+    const num = (q.match(/(\d{1,3}[а-яa-z]?)/i) || [])[1];
+    let list = num ? buses.filter(b => String(b.number).toLowerCase() === num.toLowerCase()) : [];
+    if (/школ/i.test(q)) list = list.filter(b => E.busDir(b) === 'school'); else if (/дом/i.test(q)) list = list.filter(b => E.busDir(b) === 'home');
+    if (!list.length) return R(num ? `Автобус №${num} не нашёл.` : 'Какой автобус удалить?', { buttons: buses.slice(0, 6).map(b => btn(lab(b), 'cmd:удали автобус ' + lab(b).slice(1))) });
+    if (list.length > 1) return R('Какой именно?', { buttons: list.slice(0, 6).map(b => btn(lab(b), 'cmd:удали автобус ' + lab(b).slice(1))) });
+    const b = list[0];
+    return askOrDo(t, `Удалить автобус №${b.number}?`, () => undoReply(O.actions.removeBus(b.id)));
+  }, 'bus-del');
+
+  on(/^(добавь|добавить|новый|создай|сделай|заведи)\s+(контакт|человека)(?![\wа-яё])\s+(.+)$/i, (t) => {
+    let rest = t.replace(/^\S+\s+\S+\s*/, '').trim();
+    const pm = rest.match(/\+?\d[\d\s()\-]{5,}\d/); let phone = '';
+    if (pm) { phone = pm[0].trim(); rest = rest.replace(pm[0], ' '); }
+    const name = rest.replace(/\s+/g, ' ').trim();
+    if (!name) return R('Как зовут? Например: «добавь контакт Бабушка +7 999 123-45-67».', { buttons: [btn('Открыть форму', 'person:new')] });
+    const REL_W = ['мама', 'папа', 'бабушка', 'дедушка', 'брат', 'сестра', 'тётя', 'дядя', 'тетя'];
+    const relation = REL_W.includes(N(name)) ? name[0].toUpperCase() + name.slice(1).toLowerCase() : '';
+    return undoReply(O.actions.addPerson({ name: name[0].toUpperCase() + name.slice(1), relation, phone }), [btn('Контакты', 'tab:contacts')]);
+  }, 'person-add');
 
   on(/^(дневник|в дневник)\s+(.+)/i, (t, n, now, m) => {
     const text = (m && m[2]) || t.replace(/^(дневник|в дневник)\s+/i, '');
@@ -452,7 +576,7 @@
     return R(r.msg);
   }, 'diary');
 
-  on(/тема\s*(светл\w*|т[её]мн\w*|dark|light)/i, (t, n) => {
+  on(/тема\s*(светл[а-яёa-z0-9_]*|т[её]мн[а-яёa-z0-9_]*|dark|light)/i, (t, n) => {
     const light = /светл|light/.test(n);
     const r = O.actions.setTheme(light ? 'light' : 'dark');
     if (r.undo) undoStack.push(r.undo);
@@ -469,7 +593,16 @@
     return R(r.msg, { buttons: sug() });
   }, 'undo');
 
+  // синонимы глаголов: «создай/сделай/заведи автобус» = «добавь автобус», «убери/сотри» = «удали»
+  function canon(t) {
+    return t.replace(/^(?:хочу|надо|нужно|можешь|пожалуйста)?\s*(?:создай|создать|сделай|сделать|делай|заведи|завести|поставь|внеси|новый|новая|новое|\+)\s+(?=(?:автобус|урок|кружок|контакт|человека|дз|заметк|цель))/i, 'добавь ')
+      .replace(/^(?:хочу|надо|нужно)?\s*добавить\s+(?=(?:автобус|урок|кружок|контакт))/i, 'добавь ')
+      .replace(/^запиши\s+(?=(?:автобус|урок|кружок|контакт))/i, 'добавь ')
+      .replace(/^(?:убери|сотри|вычеркни|удалить)\s+/i, 'удали ');
+  }
   function understand(text) {
+    sortInt();
+    text = canon(text.trim());
     const t = text.trim(), n = N(t), now = new Date();
     for (const it of INT) { const m = n.match(it.re) || t.match(it.re); if (!m) continue; let r = null; try { r = it.fn(t, n, now, m); } catch (e) { console.error('agent', it.name, e); } if (r) { r.intent = it.name; return r; } }
     return null;
@@ -625,7 +758,7 @@
     const c = C(), r = understand(text);
     if (r) { if (c.legacyPending) c.legacyCancel(); legacy = false; return [r]; }
     // старый агент — только для команд про уроки/кружки/заметки или когда он ждёт ответ
-    const n = N(text), LEG = /(добав|удал|убер|перенес|перемест|замен|измен|поменя|сдвин|созда|запиш|переимен|урок|кружок|заметк|окно|нагрузк|сколько|каникул|свободн\w* врем|отмена|отмени)/;
+    const n = N(text), LEG = /(добав|удал|убер|перенес|перемест|замен|измен|поменя|сдвин|созда|запиш|переимен|урок|кружок|заметк|окно|нагрузк|сколько|каникул|свободн[а-яёa-z0-9_]* врем|отмена|отмени)/;
     const words = n.split(/\s+/).slice(0, 2), subjHit = words.some(w => w.length > 2 && C().SUBJECTS.includes(C().resolveSubject(w))) && (dayIn(n, new Date()) || timeIn(n));
     if (!(c.legacyPending || LEG.test(n) || subjHit)) {
       // mark for possible LLM in send()
@@ -791,6 +924,7 @@
       </div>`;
       return;
     }
+    if (A.panel === 'scripts') { if (O.scripts) O.scripts.panel(body); else body.innerHTML = '<p style="padding:16px">Модуль сценариев не загружен.</p>'; return; }
     if (A.panel === 'skills') {
       const cats = { day: 'День', tasks: 'Задачи', schedule: 'Расписание', people: 'Люди', nav: 'Навигация', sos: 'SOS' };
       const skills = (O.actions && O.actions.SKILLS) || [];
@@ -828,6 +962,7 @@
         <button type="button" class="o-agent-tab" data-apanel="day" role="tab">${ic('calendar',18)}<span>День</span></button>
         <button type="button" class="o-agent-tab" data-apanel="edits" role="tab">${ic('file',18)}<span>Правки</span></button>
         <button type="button" class="o-agent-tab" data-apanel="skills" role="tab">${ic('check',18)}<span>Навыки</span></button>
+        <button type="button" class="o-agent-tab" data-apanel="scripts" role="tab">${ic('sparkle',18)}<span>Сценарии</span></button>
       </div>
       <div class="o-agent-body" id="ag-body"></div>
     </div>`;

@@ -52,7 +52,7 @@
   A.parseTime = function (text) {
     const m = String(text || '').match(/(\d{1,2})[:.\s](\d{2})/);
     if (m) { const h = +m[1], mi = +m[2]; if (h < 24 && mi < 60) return E.fmt(h * 60 + mi); }
-    const m2 = String(text || '').match(/(?:^|\s)(\d{1,2})\s*(?:час\w*|ч)(?:\s|$)/);
+    const m2 = String(text || '').match(/(?:^|\s)(\d{1,2})\s*(?:час[а-яёa-z0-9_]*|ч)(?:\s|$)/);
     if (m2) return E.fmt(+m2[1] * 60);
     return null;
   };
@@ -98,7 +98,7 @@
     const s = S();
     if (day == null || !subject || !start) return { ok: false, msg: 'Нужны день, предмет и время.' };
     const lesson = {
-      id: uid(), day: +day, subject, start, end: end || start,
+      id: uid(), day: +day, subject, start, end: end || E.fmt(E.toMin(start) + (+S().settings.lessonDuration || 40)),
       room: room || '', teacher: teacher || '', items: items || []
     };
     s.lessons.push(lesson); saveRender();
@@ -106,12 +106,13 @@
     logChange(`Урок «${subject}» ${dayLabel(+day)} ${start}`, undo, { type: 'lesson', id: lesson.id });
     return { ok: true, msg: `Урок «${subject}» ${dayLabel(+day)} в ${start}.`, id: lesson.id, undo };
   };
-  A.moveLesson = function (idOrQuery, newDay, newStart) {
+  A.moveLesson = function (idOrQuery, newDay, newStart, fromDay) {
     const s = S();
     let les = (s.lessons || []).find(l => l.id === idOrQuery);
     if (!les && idOrQuery) {
-      const q = E.N(idOrQuery);
-      const list = s.lessons.filter(l => E.N(l.subject).includes(q));
+      const q = E.N(idOrQuery), stem = q.length > 5 ? q.slice(0, -2) : q;
+      let list = s.lessons.filter(l => { const n = E.N(l.subject); return n.includes(q) || q.includes(n) || n.includes(stem); });
+      if (fromDay != null) list = list.filter(l => l.day === +fromDay);
       if (list.length === 1) les = list[0];
       else if (list.length > 1) return { ok: false, msg: 'Какой урок?', candidates: list.slice(0, 6) };
     }
@@ -188,20 +189,32 @@
   };
 
   /* ───── автобусы ───── */
-  A.addBus = function ({ number, dir, times, walkMin, rideMin, from, to }) {
+  A.addBus = function ({ number, dir, times, walkMin, rideMin, from, to, days }) {
     const s = S();
     s.buses = s.buses || [];
+    const list = (Array.isArray(times) ? times : (times ? [times] : [])).map(x => { const m = String(x).match(/(\d{1,2})[:.](\d{2})/); return m ? String(m[1]).padStart(2, '0') + ':' + m[2] : null; }).filter(Boolean);
+    if (!list.length) return { ok: false, msg: 'Укажите хотя бы одно время рейса.' };
+    const dirName = d => d === 'school' ? 'в школу' : 'домой';
+    const ex = s.buses.find(x => String(x.number) === String(number) && ((E.busDir ? E.busDir(x) : (x.dir || 'home')) === (dir || 'home')));
+    if (ex) {   // тот же номер и направление — дополняем рейсы, а не плодим дубли
+      const prevTimes = (ex.times || []).slice();
+      ex.times = [...new Set(prevTimes.concat(list))].sort();
+      saveRender();
+      const undoEx = () => { ex.times = prevTimes; saveRender(); };
+      logChange(`Автобус №${ex.number}: рейсы`, undoEx, { type: 'bus', id: ex.id });
+      return { ok: true, msg: `Автобус №${ex.number} (${dirName(dir || 'home')}): рейсы ${ex.times.join(', ')}.`, id: ex.id, undo: undoEx };
+    }
     const b = {
       id: uid(), number: String(number || ''), dir: dir || 'home',
-      times: Array.isArray(times) ? times : (times ? [times] : []),
+      times: [...new Set(list)].sort(), time: list.slice().sort()[0],
       walkMin: walkMin != null ? +walkMin : 5, rideMin: rideMin != null ? +rideMin : 15,
-      from: from || '', to: to || '', days: []
+      from: from || '', to: to || '', days: Array.isArray(days) ? days : []
     };
-    if (!b.times.length) return { ok: false, msg: 'Укажите хотя бы одно время рейса.' };
     s.buses.push(b); saveRender();
     const undo = () => { s.buses = s.buses.filter(x => x.id !== b.id); saveRender(); };
     logChange(`Автобус №${b.number}`, undo, { type: 'bus', id: b.id });
-    return { ok: true, msg: `Автобус №${b.number} (${b.dir}), рейсы: ${b.times.join(', ')}.`, id: b.id, undo };
+    const dn = b.days.length ? ', дни: ' + b.days.map(i => ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'][i]).join(' ') : '';
+    return { ok: true, msg: `Автобус №${b.number} (${dirName(b.dir)}), рейсы: ${b.times.join(', ')}${dn}.`, id: b.id, undo };
   };
   A.removeBus = function (idOrNum) {
     const s = S();
@@ -257,8 +270,8 @@
   };
   A.setBirthday = function (query, dateStr) {
     const s = S();
-    const q = E.N(query || '');
-    const list = (s.people || []).filter(p => E.N(p.name).includes(q) || E.N(p.relation).includes(q));
+    const q = E.N(typeof query === 'object' && query ? query.name : query || '');
+    const list = (query && typeof query === 'object') ? [query] : (s.people || []).filter(p => E.N(p.name).includes(q) || E.N(p.relation).includes(q));
     if (!list.length) return { ok: false, msg: `Не нашёл «${query}».` };
     if (list.length > 1) return { ok: false, msg: 'Кому именно?', candidates: list.slice(0, 5) };
     const p = list[0], prev = p.birthday;

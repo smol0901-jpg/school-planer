@@ -2,11 +2,11 @@
    • офлайн: все файлы приложения (включая QR-библиотеки) кэшируются при установке
    • обновления: новая версия ставится в фоне, пользователь подтверждает «Обновить» (тост в приложении)
    • «Поделиться в Орбиту»: принимает файл/текст из системного меню (share_target) и передаёт в приложение */
-const V = 'orbit-v4.3.6';
+const V = 'orbit-v4.4.2';
 const CORE = ['./', './index.html', './manifest.json', './version.json', './browserconfig.xml',
   './css/styles.css', './css/orbit4.css',
   './js/qrcode.js', './js/jsQR.js', './js/xlsx.mini.min.js', './js/app.js',
-  './js/orbit/engine.js', './js/orbit/kit.js', './js/orbit/brand.js', './js/orbit/habits.js', './js/orbit/dash.js', './js/orbit/lists.js', './js/orbit/actions.js', './js/orbit/llm.js', './js/orbit/assistant.js', './js/orbit/share.js', './js/orbit/settings.js', './js/orbit/boot.js',
+  './js/orbit/engine.js', './js/orbit/kit.js', './js/orbit/brand.js', './js/orbit/habits.js', './js/orbit/dash.js', './js/orbit/lists.js', './js/orbit/actions.js', './js/orbit/llm.js', './js/orbit/assistant.js', './js/orbit/scripts.js', './js/orbit/share.js', './js/orbit/settings.js', './js/orbit/boot.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/favicon-32.png'];
 
 self.addEventListener('install', e => {
