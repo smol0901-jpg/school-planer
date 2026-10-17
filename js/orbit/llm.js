@@ -192,7 +192,7 @@ ${userExtra || ''}`;
         model,
         messages: [
           { role: 'system', content: system },
-          { role: 'user', content: String(user).slice(0, 800) }
+          { role: 'user', content: String(user).slice(0, 2500) }
         ],
         temperature: 0.2,
         max_tokens: 400
@@ -214,7 +214,7 @@ ${userExtra || ''}`;
         model,
         max_tokens: 400,
         system,
-        messages: [{ role: 'user', content: String(user).slice(0, 800) }]
+        messages: [{ role: 'user', content: String(user).slice(0, 2500) }]
       })
     });
     return res;
@@ -241,8 +241,10 @@ ${userExtra || ''}`;
     const p = PROVIDERS[c.provider] || PROVIDERS.custom;
     const model = c.model || p.defaultModel || 'gpt-4o-mini';
     const system = systemPrompt(opts && opts.systemExtra);
+    const userMsg = (opts && opts.history) ? ('Недавний разговор (для контекста, не отвечай на него):\n' + String(opts.history).slice(0, 1800) + '\n\nНовое сообщение: ' + userText) : userText;
     const url = chatUrl(c);
     if (!url && c.provider !== 'giga') return { ok: false, error: 'Не указан API Endpoint.' };
+    if (url && !/^https?:\/\//i.test(url)) return { ok: false, error: 'API Endpoint должен начинаться с https:// (сейчас: «' + String(url).slice(0, 40) + '»).' };
 
     try {
       let res;
@@ -250,14 +252,14 @@ ${userExtra || ''}`;
         if (!c.clientId && !c.authKey) return { ok: false, error: 'Для GigaChat нужны Client ID и Client Secret (или Authorization Key) в Настройках → Агент.' };
         const token = await gigaAccessToken(c);
         const u = url || PROVIDERS.giga.chatUrl;
-        res = await chatOpenAI(u, token, model, system, userText);
+        res = await chatOpenAI(u, token, model, system, userMsg);
       } else if (c.provider === 'claude' || p.format === 'anthropic') {
         if (!c.key) return { ok: false, error: 'Нужен API Key Anthropic.' };
-        res = await chatClaude(url, c.key, model, system, userText);
+        res = await chatClaude(url, c.key, model, system, userMsg);
       } else {
         if (!c.key) return { ok: false, error: 'Нужен API Key.' };
         if (!url) return { ok: false, error: 'Не указан endpoint.' };
-        res = await chatOpenAI(url, c.key, model, system, userText);
+        res = await chatOpenAI(url, c.key, model, system, userMsg);
       }
       if (!res.ok) {
         const t = await res.text().catch(() => '');

@@ -6,11 +6,40 @@
   const MKEY = 'orbit-memory-v4';
   const DAYF = ['понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу', 'воскресенье'];
   const left = m => m < 60 ? `${m} мин` : `${Math.floor(m / 60)} ч ${m % 60 ? (m % 60) + ' мин' : ''}`.trim();
-  const loadMem = () => { try { return Object.assign({ aliases: {}, notes: [], msgs: [] }, JSON.parse(localStorage.getItem(MKEY) || '{}')); } catch (e) { return { aliases: {}, notes: [], msgs: [] }; } };
+  const MEM_MAX = 200;
+  const loadMem = () => { try { return Object.assign({ aliases: {}, notes: [], msgs: [], ctx: null, ttl: 24 }, JSON.parse(localStorage.getItem(MKEY) || '{}')); } catch (e) { return { aliases: {}, notes: [], msgs: [], ctx: null, ttl: 24 }; } };
   let mem = loadMem(), undoStack = [], pending = {}, legacy = false, busy = false;
-  const saveMem = () => { try { localStorage.setItem(MKEY, JSON.stringify({ aliases: mem.aliases, notes: mem.notes.slice(-40), msgs: mem.msgs.slice(-30) })); } catch (e) {} };
-  const A = O.assistant = { msgs: mem.msgs.map(m => ({ role: m.role, text: m.text })), panel: 'chat' };
+  /* срок памяти разговора: часы; 0 — не сохранять между сессиями; ≥9999 — не стирать */
+  const memHours = () => { let v; try { v = S().settings.agentMemHours; } catch (e) {} if (v == null || v === '') v = mem.ttl; v = +v; return isNaN(v) ? 24 : v; };
+  const alive = (m, h) => h >= 9999 || !m.at || Date.now() - m.at <= h * 3600e3;
+  const nowTs = Date.now();
+  mem.msgs = (mem.msgs || []).map(m => Object.assign({}, m, { at: m.at || nowTs })).filter(m => alive(m, memHours() || 24));
+  if (mem.ctx && !alive(mem.ctx, memHours() || 24)) mem.ctx = null;
+  if (memHours() <= 0) { mem.msgs = []; mem.ctx = null; }   // «Не помнить»: между запусками ничего не храним
+  const saveMem = () => {
+    try {
+      const h = memHours();
+      localStorage.setItem(MKEY, JSON.stringify({ aliases: mem.aliases, notes: mem.notes.slice(-40), ttl: h,
+        msgs: h > 0 ? mem.msgs.slice(-MEM_MAX) : [], ctx: h > 0 ? mem.ctx : null }));
+    } catch (e) {}
+  };
+  const A = O.assistant = { msgs: mem.msgs.map(m => ({ role: m.role, text: m.text, at: m.at })), panel: 'chat' };
   A._undoPush = fn => { if (typeof fn === 'function') undoStack.push(fn); };
+  const MEM_LABEL = h => h <= 0 ? 'не сохраняю' : h >= 9999 ? 'не стираю' : h < 24 ? (h === 1 ? 'час' : h + ' ч') : h === 24 ? 'сутки' : h === 72 ? '3 суток' : h === 168 ? 'неделя' : h === 720 ? 'месяц' : Math.round(h / 24) + ' сут.';
+  A.memLabel = () => MEM_LABEL(memHours());
+  /* убрать просроченное из чата и контекста (в сессии при «не помнить» ничего не трогаем) */
+  A.prune = () => {
+    const h = memHours();
+    if (h > 0 && h < 9999) {
+      const n = A.msgs.length;
+      A.msgs = A.msgs.filter(m => alive(m, h));
+      if (mem.ctx && !alive(mem.ctx, h)) mem.ctx = null;
+      if (A.msgs.length !== n) { mem.msgs = A.msgs.slice(-MEM_MAX).map(x => ({ role: x.role, text: x.text, at: x.at })); saveMem(); return true; }
+    }
+    return false;
+  };
+  A.clearChat = () => { A.msgs = []; mem.msgs = []; mem.ctx = null; saveMem(); try { A.render(true); } catch (e) {} };
+  A.setMemHours = h => { try { S().settings.agentMemHours = String(h); C().save(); } catch (e) {} A.prune(); saveMem(); };
   const name = () => O.brand().agent;
 
   /* ───── разбор времени и дат ───── */
@@ -311,7 +340,7 @@
   }, 'help');
 
   // порядок: сначала сценарии/SOS и ТОЧНЫЕ команды-изменения, потом общие «справочные» правила, последним — обучение алиасам
-  const PRI = ['script', 'sos', 'undo', 'remind', 'hw-add', 'hw-done', 'forget', 'remember', 'lesson-del', 'lesson-rm', 'lesson-move', 'lesson-add', 'club-del', 'club-add', 'bus-del', 'bus-add', 'person-add', 'diary', 'note', 'goal', 'theme', 'memory', 'help', 'day', 'now', 'pack'];
+  const PRI = ['script', 'sos', 'clear-chat', 'mem-set', 'mem-info', 'recall', 'undo', 'remind', 'hw-add', 'hw-done', 'forget', 'remember', 'lesson-del', 'lesson-rm', 'lesson-move', 'lesson-add', 'club-del', 'club-add', 'bus-del', 'bus-add', 'person-add', 'diary', 'note', 'goal', 'theme', 'memory', 'help', 'day', 'now', 'pack'];
   const sortInt = () => { if (INT._s) return; INT._s = 1; const w = n => { const i = PRI.indexOf(n); return i < 0 ? (n === 'alias' ? 999 : 500) : i; }; INT.sort((a, b) => w(a.name) - w(b.name)); };
 
 
@@ -339,6 +368,47 @@
     document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
     document.addEventListener('click', e => { if (justDragged) { e.preventDefault(); e.stopPropagation(); } }, true);
   })();
+
+
+  /* ───── контекст разговора: «а завтра?», «а в пятницу?», «ещё» ───── */
+  const CTX_INTENTS = ['day', 'pack', 'hw-list', 'now', 'bus', 'free'];
+  function followUp(text) {
+    const c = mem.ctx; if (!c || !c.at || !alive(c, memHours() || 24)) return null;
+    const n = N(text).trim().replace(/[?!.…]+$/, '').trim();
+    const dw = n.match(/^(?:а|и|ну а|а ещё|а еще)?\s*(?:на\s+|в\s+|во\s+|у\s+)?(сегодня|завтра|послезавтра|понедельник|вторник|среду|среда|четверг|пятницу|пятница|субботу|суббота|воскресенье|пн|вт|ср|чт|пт|сб|вс)$/);
+    if (dw) {
+      const pre = { day: 'расписание на ', pack: 'что взять ', 'hw-list': 'что задано на ' }[c.name] || (['now', 'bus', 'free'].includes(c.name) ? 'расписание на ' : null);
+      if (pre) return pre + dw[1];
+    }
+    if (/^(?:а\s+|и\s+)?(?:ещё|еще|дальше|следующий|другой|потом|а потом)(?:\s+рейс)?$/.test(n) && (c.name === 'bus' || c.name === 'free') && O.lastPlan) return '\u0000next';
+    if (/^(повтори|ещё раз|еще раз|что ты сказал[аи]?)$/.test(n) && c.text) return c.text;
+    return null;
+  }
+  const dayTitle = ts => {
+    const d = new Date(ts), n = new Date(), k = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(), diff = Math.round((k(n) - k(d)) / 864e5);
+    return diff === 0 ? 'Сегодня' : diff === 1 ? 'Вчера' : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  };
+  const hhmm = ts => new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const chatHistory = () => {
+    const h = memHours(); if (h <= 0 && !A.msgs.length) return '';
+    const list = A.msgs.filter(m => m.text && alive(m, h <= 0 ? 24 : h)).slice(0, -1).slice(-10);
+    return list.map(m => (m.role === 'user' ? 'Пользователь: ' : 'Орби: ') + String(m.text).replace(/\s+/g, ' ').slice(0, 220)).join('\n');
+  };
+
+  on(/(?:о чём|что)\s+(?:мы\s+)?(?:говорили|обсуждали|болтали)|что\s+(?:я\s+)?(?:спрашивал[а-яё]*|просил[а-яё]*|говорил[а-яё]*)|вспомни\s+(?:разговор|переписк[а-яё]*)|(?:покажи|моя)\s+(?:истори[а-яё]*|переписк[а-яё]*)/, () => {
+    if (memHours() <= 0) return R('Память разговора выключена — переписка не сохраняется. Включить: Настройки → Агент → «Память разговора».', { buttons: [btn('Настройки', 'tab:settings')] });
+    const mine = A.msgs.filter(m => m.role === 'user' && m.text).slice(0, -1).slice(-8);
+    if (!mine.length) return R('Пока мы ничего не обсуждали.');
+    return R('Вот что ты писал последним (помню: ' + A.memLabel() + '):\n' + mine.map(m => (m.at ? dayTitle(m.at) + ' ' + hhmm(m.at) + ' — ' : '') + m.text).join('\n'), { buttons: [btn('Очистить переписку', 'cmd:очисти переписку')] });
+  }, 'recall');
+  on(/(?:как долго|сколько)\s+(?:ты\s+)?(?:помнишь|хранишь|запоминаешь)|память разговора|помнишь ли (?:ты )?(?:разговор|переписк)/, () =>
+    R(memHours() <= 0 ? 'Сейчас я не сохраняю переписку между запусками.' : `Помню переписку: ${A.memLabel()}. Сообщений в памяти: ${A.msgs.length}. Изменить срок:`, { buttons: [btn('Час', 'cmd:помни переписку час'), btn('Сутки', 'cmd:помни переписку сутки'), btn('Неделя', 'cmd:помни переписку неделю'), btn('Месяц', 'cmd:помни переписку месяц')] }), 'mem-info');
+  on(/^(?:помни|храни|запоминай)\s+(?:переписк[а-яё]*|разговор[а-яё]*)?\s*(не стирай|навсегда|час|сутки|день|3 дня|три дня|неделю|месяц|не надо|не помни|выключи)$/, (t, n, now, m) => {
+    const w = m[1], h = /не стирай|навсегда/.test(w) ? 9999 : /не надо|не помни|выключи/.test(w) ? 0 : w === 'час' ? 1 : /сутки|день/.test(w) ? 24 : /3 дня|три дня/.test(w) ? 72 : w === 'неделю' ? 168 : 720;
+    A.setMemHours(h);
+    return R(h <= 0 ? 'Хорошо, переписку между запусками не сохраняю.' : `Хорошо, помню переписку: ${MEM_LABEL(h)}.`, { buttons: [btn('Что мы обсуждали', 'cmd:что мы обсуждали')] });
+  }, 'mem-set');
+  on(/^(?:очисти|сотри|удали|забудь)\s+(?:чат|переписк[а-яё]*|историю|разговор)$/, () => { A.clearChat(); return R('Переписка очищена. Привычки и заметки остались — их можно стереть командой «очисти память».'); }, 'clear-chat');
 
   /* ───── главный обработчик ───── */
 
@@ -723,7 +793,8 @@
     if (!O.llmReady || !O.llmReady()) return null;
     if (Date.now() < llmDownUntil) return null;
     let result;
-    try { result = await O.llmChat(userText); } catch (e) { result = { ok: false, error: String((e && e.message) || e) }; }
+    let hist = ''; try { hist = chatHistory(); } catch (e) {}
+    try { result = await O.llmChat(userText, { history: hist }); } catch (e) { result = { ok: false, error: String((e && e.message) || e) }; }
     if (!result) return null;
     if (!result.ok) {
       // Нейросеть — запасной вариант: ошибку не показываем в чате, агент отвечает сам.
@@ -778,13 +849,20 @@
     }
     return res;
   };
-  function push(m) { A.msgs.push(m); mem.msgs = A.msgs.slice(-30).map(x => ({ role: x.role, text: x.text })); saveMem(); }
+  function push(m) { m.at = m.at || Date.now(); A.msgs.push(m); A.prune(); mem.msgs = A.msgs.slice(-MEM_MAX).map(x => ({ role: x.role, text: x.text, at: x.at })); saveMem(); }
   A.send = async function (text) {
     text = String(text || '').trim(); if (!text || busy) return; busy = true;
     push({ role: 'user', text }); renderLiveChips([]); A.render(true);
     if (O.motion() !== 'off') await new Promise(r => setTimeout(r, 160));
     let replies;
-    try { replies = A.process(text); } catch (e) { console.error(e); replies = [R('Что-то пошло не так. Попробуйте ещё раз.')]; }
+    let procText = text;
+    try { const fu = followUp(text); if (fu) procText = fu; } catch (e) {}
+    if (procText === '\u0000next') { busy = false; agAct('ag:next'); return; }
+    try { replies = A.process(procText); } catch (e) { console.error(e); replies = [R('Что-то пошло не так. Попробуйте ещё раз.')]; }
+    try {
+      const hit = replies[0] && replies[0].intent;
+      if (hit && CTX_INTENTS.includes(hit)) { mem.ctx = { name: hit, text: procText, at: Date.now() }; saveMem(); }
+    } catch (e) {}
     // LLM fallback for unknown
     if (replies.length === 1 && replies[0]._needLlm) {
       const s = S().settings || {};
@@ -947,9 +1025,10 @@
     // клики по data-ag обрабатывает root (A.render)
     try { voice(); } catch (err) {}
     try { O.look && O.look(S().settings); } catch (err) {}
-    try { const st = $('ag-status'); if (st) { const s = S().settings || {}; st.textContent = 'Помощник · помнит привычки' + ((O.llmReady && O.llmReady()) ? ' · ИИ в запасе' : ''); } } catch (e) {}
+    try { const st = $('ag-status'); if (st) { const s = S().settings || {}; st.textContent = 'Помощник · память: ' + A.memLabel() + ((O.llmReady && O.llmReady()) ? ' · ИИ в запасе' : ''); } } catch (e) {}
   }
 
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && A.prune()) { try { A.render(true); } catch (e) {} } });
   A.render = function (scroll) {
     const root = $('agent-root'); if (!root) return;
     const b = O.brand();
@@ -992,12 +1071,14 @@
     if ((A.panel || 'chat') !== 'chat') return;
     const last = A.msgs.length - 1, ms = $('ag-msgs');
     if (!ms) return;
-    ms.innerHTML = A.msgs.map((m, i) => {
+    let _pk = null;
+    const daySep = (m, i) => { if (!m.at) return ''; const d = new Date(m.at), k = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(), same = k === _pk, firstToday = _pk === null && dayTitle(m.at) === 'Сегодня'; _pk = k; return (same || firstToday) ? '' : `<div class="o-day-sep"><span>${esc(dayTitle(m.at))}</span></div>`; };
+    ms.innerHTML = A.msgs.map((m, i) => daySep(m, i) + (() => {
       if (m.role === 'user') return `<div class="o-m me">${esc(m.text)}</div>`;
       const isLast = i === last, btns = (isLast ? (m.buttons || []) : []).map(x => `<button class="o-chip" data-ag="${esc(x.act)}">${esc(x.label)}</button>`).join('');
       const subj = m.legacySubjects && isLast ? `<div class="o-subj">${(C().SUBJECTS || []).map(x => `<button class="o-chip" data-ag="cmd:${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
       return `<div class="o-m bot"><div class="o-m-t">${esc(m.text).replace(/\n/g, '<br>')}</div>${(m.cards || []).join('')}${subj}${btns ? `<div class="o-m-b">${btns}</div>` : ''}${m.copyPrompt && isLast ? `<div class="o-m-b"><button class="o-chip" data-ag="ag:copy">Копировать промпт для нейросети</button></div>` : ''}</div>`;
-    }).join('') + (busy ? '<div class="o-m bot typing"><i></i><i></i><i></i></div>' : '');
+    })()).join('') + (busy ? '<div class="o-m bot typing"><i></i><i></i><i></i></div>' : '');
     const chips = $('ag-chips');
     if (chips) {
       try { chips.innerHTML = A.chips().map(x => `<button class="o-chip" data-ag="${esc(x.act)}">${esc(x.label)}</button>`).join(''); }

@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'orbit-planner-v3';
   const BACKUP_KEY = 'orbit-planner-backup-v3';
-  const APP_VERSION = '4.4.2';
+  const APP_VERSION = '4.4.5';
   const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const DAYS_FULL = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
   const SUBJECTS = [
@@ -81,7 +81,7 @@
       llmProxy: '',
       agentAiPrompt: true,
       theme: 'dark', accent: 'violet', radius: 14, density: 'comfortable', fontSize: 16, shadows: true,
-      lessonDuration: 40, breakDuration: 10, break15: 15, longBreakDuration: 20, longBreakAfter: 3, breakAfter: [1, 2, 3], dayStart: '08:30', afterSchoolGapMin: 30, brand: 'orbit', accentCustom: '', font: 'system', textScale: 100, glass: true, motion: 'full', contrast: 'normal', exitMin: 7, arriveBefore: 5, rideDefault: 15, showBuses: 4, notifyLeave: false, notifyLead: 10, notifyHw: false, sosEnabled: true, sosNumber: '112', agentSuggest: true, agentAutonomy: 'smart', voice: true, autoBackup: true, widgets: null
+      lessonDuration: 40, breakDuration: 10, break15: 15, longBreakDuration: 20, longBreakAfter: 3, breakAfter: [1, 2, 3], dayStart: '08:30', afterSchoolGapMin: 30, brand: 'orbit', accentCustom: '', font: 'system', textScale: 100, glass: true, motion: 'full', contrast: 'normal', exitMin: 7, arriveBefore: 5, rideDefault: 15, showBuses: 4, notifyLeave: false, notifyLead: 10, notifyHw: false, sosEnabled: true, sosNumber: '112', agentSuggest: true, agentAutonomy: 'smart', agentMemHours: '24', voice: true, autoBackup: true, widgets: null
     }
   };
 
@@ -130,7 +130,7 @@
       packChecks: {},
       settings: {
         theme: 'dark', accent: 'violet', radius: 14, density: 'comfortable', fontSize: 16, shadows: true,
-        lessonDuration: 40, breakDuration: 10, break15: 15, longBreakDuration: 20, longBreakAfter: 3, breakAfter: [1, 2, 3], dayStart: '08:30', afterSchoolGapMin: 30, brand: 'orbit', accentCustom: '', font: 'system', textScale: 100, glass: true, motion: 'full', contrast: 'normal', exitMin: 7, arriveBefore: 5, rideDefault: 15, showBuses: 4, notifyLeave: false, notifyLead: 10, notifyHw: false, sosEnabled: true, sosNumber: '112', agentSuggest: true, agentAutonomy: 'smart', voice: true, autoBackup: true, widgets: null
+        lessonDuration: 40, breakDuration: 10, break15: 15, longBreakDuration: 20, longBreakAfter: 3, breakAfter: [1, 2, 3], dayStart: '08:30', afterSchoolGapMin: 30, brand: 'orbit', accentCustom: '', font: 'system', textScale: 100, glass: true, motion: 'full', contrast: 'normal', exitMin: 7, arriveBefore: 5, rideDefault: 15, showBuses: 4, notifyLeave: false, notifyLead: 10, notifyHw: false, sosEnabled: true, sosNumber: '112', agentSuggest: true, agentAutonomy: 'smart', agentMemHours: '24', voice: true, autoBackup: true, widgets: null
       }
     };
     const s = { ...base, ...(p || {}) };

@@ -392,3 +392,14 @@ button.o-sos-big{width:100%;text-align:left;cursor:pointer;font:inherit;color:in
   .o-chips-row.dragging,.o-live-chips.dragging,.o-agent-tabs.dragging{cursor:grabbing;user-select:none}
   .o-chips-row.dragging *,.o-live-chips.dragging *{pointer-events:none}
 }
+
+/* ─── 4.4.3: разделители дней в чате ─── */
+.o-day-sep{display:flex;justify-content:center;margin:10px 0 4px}
+.o-day-sep span{font-size:.72rem;color:var(--text-muted);background:color-mix(in srgb,var(--text) 8%,transparent);padding:3px 10px;border-radius:99px}
+
+/* ─── 4.4.5: «Высокий контраст» работал только для границ в тёмной теме (правила брендов перебивали). Теперь — во всех брендах и темах ─── */
+html[data-brand][data-theme][data-contrast="high"]{--border:color-mix(in srgb,var(--text) 50%,transparent);--border-strong:var(--text);--text-muted:color-mix(in srgb,var(--text) 90%,var(--bg))}
+html[data-brand][data-theme="dark"][data-contrast="high"]{--text:#fff}
+html[data-brand][data-theme="light"][data-contrast="high"]{--text:#000}
+html[data-contrast="high"] :focus-visible{outline:3px solid var(--text);outline-offset:2px}
+html[data-contrast="high"] .o-chip,html[data-contrast="high"] .o-btn.ghost{border-color:var(--text)}
